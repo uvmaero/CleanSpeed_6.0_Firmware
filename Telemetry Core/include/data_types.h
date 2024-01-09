@@ -61,6 +61,9 @@ typedef struct TractiveCoreData
 
         float currentSpeed;
 
+        bool tractionControlEnable;
+        float tractionControlModifier;
+
         uint16_t coastRegen;
         uint16_t brakeRegen;
     } tractive;
@@ -75,6 +78,18 @@ typedef struct TractiveCoreData
         float vicoreTemp;
 
         float glvReading;
+
+        float frontWheelsSpeed;
+        int16_t frontWheelSpeedCount;
+        int16_t frontWheelSpeedTime;
+
+        float brWheelSpeed;
+        int16_t brWheelSpeedCount;
+        int16_t brWheelSpeedTime;
+
+        float blWheelSpeed;
+        int16_t blWheelSpeedCount;
+        int16_t blWheelSpeedTime;
     } criticalSensors;
     
     struct Inputs
@@ -130,14 +145,6 @@ typedef struct TelemetryCoreData
         uint8_t brSuspensionDamper;
         uint8_t blSuspensionDamper;
     } dampers;
-
-    struct WheelSpeed 
-    {
-        uint8_t frWheelSpeed;
-        uint8_t flWheelSpeed;
-        uint8_t brWheelSpeed;
-        uint8_t blWheelSpeed;
-    } wheelSpeed;
 
     struct TireTemp
     {

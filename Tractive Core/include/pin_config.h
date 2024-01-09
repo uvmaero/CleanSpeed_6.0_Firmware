@@ -41,6 +41,11 @@ esp_pm_config_esp32s3_t power_configuration {
 #define GLV_VOLTAGE_PIN                     8
 #define VICORE_TEMP_PIN                     17
 
+#define FR_HALL_EFFECT_PIN                  47
+#define FL_HALL_EFFECT_PIN                  21
+#define BR_HALL_EFFECT_PIN                  20
+#define BL_HALL_EFFECT_PIN                  19
+
 
 // Inputs
 #define PEDAL_0_PIN                         4
@@ -53,6 +58,7 @@ esp_pm_config_esp32s3_t power_configuration {
 
 #define START_BUTTON_PIN                    35
 #define DRIVE_MODE_BUTTON_PIN               40
+#define TRACTION_CONTROL_SWITCH_PIN         39
 
 
 // TWAI
@@ -62,12 +68,12 @@ esp_pm_config_esp32s3_t power_configuration {
 
 // Outputs
 #define RTD_LED_PIN                         11
-#define DRIVE_MODE_LED_PIN                  39
+#define DRIVE_MODE_LED_PIN                  48
 
 #define BMS_FAULT_LED_PIN                   10     
 #define IMD_FAULT_LED_PIN                   9
 
-#define BUZZER_PIN                          48
+#define BUZZER_PIN                          14
 
 #define BRAKE_LIGHT_PIN                     38
 

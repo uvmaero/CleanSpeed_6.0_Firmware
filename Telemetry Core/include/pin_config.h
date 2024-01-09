@@ -39,11 +39,6 @@ esp_pm_config_esp32s3_t power_configuration {
 #define BR_SUSPENSION_DAMPER_PIN        9
 #define BL_SUSPENSION_DAMPER_PIN        13
 
-#define FR_HALL_EFFECT_PIN              5
-#define FL_HALL_EFFECT_PIN              17
-#define BR_HALL_EFFECT_PIN              42
-#define BL_HALL_EFFECT_PIN              41
-
 #define FR_TIRE_TEMP_PIN                19
 #define FL_TIRE_TEMP_PIN                16
 #define BR_TIRE_TEMP_PIN                10

@@ -6,7 +6,7 @@ Each board is managed by an ESP32-S3, in the form of the official ESP32-S3 Dev-K
 
 ## Tractive Core
 ### Description
-This core manages all driver input and crictical functionalities like battery status and cooling
+This core manages all driver input and crictical functionalities like traction control, battery status, and cooling
 ### I/O
 #### Inputs
 - Accelorator pedal

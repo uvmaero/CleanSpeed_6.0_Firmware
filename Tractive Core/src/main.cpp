@@ -39,8 +39,13 @@
 
 
 // definitions
+#define TRAC_CON_ENABLE_BIAS            0.1         // the activation threshold of traction control expressed as a percentage difference between front and rear wheel speeds
+#define TRAC_CON_CORNER_ENABLE          0.7         // percent difference between rear wheel speeds needed to enable cornering traction control
+#define TRAC_CON_MAX_MOD                0.75        // maximum power reduction percentage that traction control can apply
+#define TRAC_CON_MOD_STEP               0.02        // the step in which each iteration of traction control modified the throttle response
+#define TRAC_CON_STEP_INCREASE_MOD      3           // the decrease in traction control management as a mutliple of the increasing step          
 #define TIRE_DIAMETER                   20.0        // diameter of the vehicle's tires in inches
-#define WHEEL_RPM_CALC_THRESHOLD        100         // the number of times the hall effect sensor is tripped before calculating vehicle speed
+#define WHEEL_RPM_CALC_THRESHOLD        20          // the number of times the hall effect sensor is tripped before calculating vehicle speed
 #define BRAKE_LIGHT_THRESHOLD           50          // the threshold that must be crossed for the brake to be considered active
 #define PEDAL_MIN                       0           // minimum value the pedals can read as
 #define PEDAL_MAX                       255         // maximum value a pedal can read as
@@ -52,7 +57,7 @@
 #define PRECHARGE_FLOOR                 0.8         // precentage of bus voltage rinehart should be at
 
 // TWAI
-#define NUM_TWAI_READS                  5           // the number of messages to read from RX FIFO the TWAI read task is called, 5 is max capacity of the queue!
+#define NUM_TWAI_READS                  3           // the number of messages to read from RX FIFO the TWAI read task is called, 5 is max capacity of the queue!
 #define RINE_MOTOR_INFO_ADDR            0x0A5       // get motor information from Rinehart 
 #define RINE_VOLT_INFO_ADDR             0x0A7       // get rinehart electrical information
 #define RINE_BUS_INFO_ADDR              0x0AA       // get rinehart relay information 
@@ -62,9 +67,9 @@
 #define BMS_CELL_DATA_ADDR              0x6B2       // cell data
 
 // tasks & timers
-#define IO_UPDATE_INTERVAL              100000      // 0.1 seconds in microseconds
-#define TWAI_UPDATE_INTERVAL            100000      // 0.1 seconds in microseconds
-#define PRECHARGE_UPDATE_INTERVAL       200000      // 0.2 seconds in microseconds
+#define IO_UPDATE_INTERVAL              25000       // 0.025 seconds in microseconds (40Hz)
+#define TWAI_UPDATE_INTERVAL            25000       // 0.025 seconds in microseconds (40Hz)
+#define PRECHARGE_UPDATE_INTERVAL       250000      // 0.25 seconds in microseconds  (4Hz)
 #define TASK_STACK_SIZE                 4096        // in bytes
 #define TWAI_BLOCK_DELAY                100         // time to block to complete function call in FreeRTOS ticks (milliseconds)
 
@@ -136,6 +141,9 @@ TractiveCoreData tractiveCoreData = {
     
     .currentSpeed = 0.0f,
 
+    .tractionControlEnable = true,
+    .tractionControlModifier = 1.00f,
+
     .coastRegen = 0,
     .brakeRegen = 0,
   },
@@ -150,6 +158,18 @@ TractiveCoreData tractiveCoreData = {
     .vicoreTemp = 0.0f,
 
     .glvReading = 0.0f,
+
+    .frontWheelsSpeed = 0.0f,
+    .frontWheelSpeedCount = 0,
+    .frontWheelSpeedTime = 0,
+
+    .brWheelSpeed = 0.0f,
+    .brWheelSpeedCount = 0,
+    .brWheelSpeedTime = 0,
+
+    .blWheelSpeed = 0.0f,
+    .blWheelSpeedCount = 0,
+    .blWheelSpeedTime = 0,
   },
 
   // inputs
@@ -224,6 +244,12 @@ void PrechargeTask(void* pvParameters);
 // helpers
 void GetCommandedTorque();
 uint16_t CalculateThrottleResponse(uint16_t value);
+uint16_t TractionControl();
+
+// ISRs
+void FrontWheelSpeedISR();
+void BRWheelSpeedISR();
+void BLWheelSpeedISR();
 
 
 /*
@@ -267,6 +293,18 @@ void setup() {
 
   pinMode(START_BUTTON_PIN, INPUT_PULLUP);
   pinMode(DRIVE_MODE_BUTTON_PIN, INPUT_PULLUP);
+
+  pinMode(TRACTION_CONTROL_SWITCH_PIN, INPUT);
+
+  pinMode(FR_HALL_EFFECT_PIN, INPUT);
+  pinMode(FL_HALL_EFFECT_PIN, INPUT);
+  pinMode(BR_HALL_EFFECT_PIN, INPUT);
+  pinMode(BL_HALL_EFFECT_PIN, INPUT);
+
+  // pin interrupts
+  attachInterrupt(FR_HALL_EFFECT_PIN, FrontWheelSpeedISR, RISING);
+  attachInterrupt(BR_HALL_EFFECT_PIN, BRWheelSpeedISR, RISING);
+  attachInterrupt(BL_HALL_EFFECT_PIN, BLWheelSpeedISR, RISING);
 
   // outputs
   pinMode(RTD_LED_PIN, OUTPUT);
@@ -442,6 +480,103 @@ void PrechargeCallback() {
 
 /*
 ===============================================================================================
+                                        ISRs
+===============================================================================================
+*/
+
+
+/**
+ * ISR for caluclating front wheel speeds 
+*/
+void FrontWheelSpeedISR() {
+  portENTER_CRITICAL_ISR(&timerMux);
+
+  // increment pass counter
+  tractiveCoreData.sensors.frontWheelSpeedCount++;
+
+  // calculate wheel rpm
+  if (tractiveCoreData.sensors.frontWheelSpeedCount > WHEEL_RPM_CALC_THRESHOLD) {
+    // get time difference
+    float timeDiff = (float)esp_timer_get_time() - (float)tractiveCoreData.sensors.frontWheelSpeedTime;
+
+    // calculate rpm
+    tractiveCoreData.sensors.frontWheelsSpeed = ((float)tractiveCoreData.sensors.frontWheelSpeedCount / (timeDiff / 1000000.0)) * 60.0;
+
+    // update time keeping
+    tractiveCoreData.sensors.frontWheelSpeedTime = esp_timer_get_time();
+
+    // reset counter
+    tractiveCoreData.sensors.frontWheelSpeedCount = 0;
+  }
+
+  portEXIT_CRITICAL_ISR(&timerMux);
+
+  return;
+}
+
+
+/**
+ * ISR for caluclating rear right wheel speeds 
+*/
+void BRWheelSpeedISR() {
+  portENTER_CRITICAL_ISR(&timerMux);
+
+  // increment pass counter
+  tractiveCoreData.sensors.brWheelSpeedCount++;
+
+  // calculate wheel rpm
+  if (tractiveCoreData.sensors.brWheelSpeedCount > WHEEL_RPM_CALC_THRESHOLD) {
+    // get time difference
+    float timeDiff = (float)esp_timer_get_time() - (float)tractiveCoreData.sensors.brWheelSpeedTime;
+
+    // calculate rpm
+    tractiveCoreData.sensors.brWheelSpeed = ((float)tractiveCoreData.sensors.brWheelSpeedCount / (timeDiff / 1000000.0)) * 60.0;
+
+    // update time keeping
+    tractiveCoreData.sensors.brWheelSpeedTime = esp_timer_get_time();
+
+    // reset counter
+    tractiveCoreData.sensors.brWheelSpeedCount = 0;
+  }
+
+  portEXIT_CRITICAL_ISR(&timerMux);
+
+  return;
+}
+
+
+/**
+ * ISR for caluclating rear left wheel speeds 
+*/
+void BLWheelSpeedISR() {
+  portENTER_CRITICAL_ISR(&timerMux);
+
+  // increment pass counter
+  tractiveCoreData.sensors.blWheelSpeedCount++;
+
+  // calculate wheel rpm
+  if (tractiveCoreData.sensors.blWheelSpeedCount > WHEEL_RPM_CALC_THRESHOLD) {
+    // get time difference
+    float timeDiff = (float)esp_timer_get_time() - (float)tractiveCoreData.sensors.blWheelSpeedTime;
+
+    // calculate rpm
+    tractiveCoreData.sensors.blWheelSpeed = ((float)tractiveCoreData.sensors.blWheelSpeedCount / (timeDiff / 1000000.0)) * 60.0;
+
+    // update time keeping
+    tractiveCoreData.sensors.blWheelSpeedTime = esp_timer_get_time();
+
+    // reset counter
+    tractiveCoreData.sensors.blWheelSpeedCount = 0;
+  }
+
+  portEXIT_CRITICAL_ISR(&timerMux);
+
+  return;
+}
+
+
+/*
+===============================================================================================
                                 FreeRTOS Task Functions
 ===============================================================================================
 */
@@ -466,6 +601,10 @@ void IOReadTask(void* pvParameters)
   // calculate commanded torque
   GetCommandedTorque();
 
+  // calculate current speed in mph
+  float tmpAverageWheelRpm = (tractiveCoreData.sensors.frontWheelsSpeed + tractiveCoreData.sensors.brWheelSpeed + tractiveCoreData.sensors.blWheelSpeed) / 3;
+  tractiveCoreData.tractive.currentSpeed = tmpAverageWheelRpm * TIRE_DIAMETER * 3.14 * (60 / 63360);   // 63360 inches in a mile
+
   // brake pressure / pedal
   float tmpFrontBrake = analogReadMilliVolts(FRONT_BRAKE_PIN);
   tractiveCoreData.inputs.frontBrake = map(tmpFrontBrake, 265, 855, PEDAL_MIN, PEDAL_MAX);  // (0.26V - 0.855V) | values found via testing
@@ -479,6 +618,14 @@ void IOReadTask(void* pvParameters)
   }
   else {
     tractiveCoreData.outputs.brakeLightEnable = false;
+  }
+
+  // traction control
+  if (digitalRead(TRACTION_CONTROL_SWITCH_PIN == HIGH)) {
+    tractiveCoreData.tractive.tractionControlEnable = true;
+  }
+  else {
+    tractiveCoreData.tractive.tractionControlEnable = false;
   }
 
   // start button 
@@ -964,6 +1111,13 @@ void GetCommandedTorque()
     break;
   }
 
+
+  // --- traction control --- //
+  if (tractiveCoreData.tractive.tractionControlEnable) {
+    tractiveCoreData.tractive.commandedTorque = TractionControl();
+  }
+
+
   // --- safety checks --- //
 
   // rinehart voltage check
@@ -983,9 +1137,9 @@ void GetCommandedTorque()
   }
 
   // if brake is engaged
-  // if (carData.outputs.brakeLight) {
-  //   tractiveCoreData.tractive.commandedTorque = 0;
-  // }
+  if (tractiveCoreData.outputs.brakeLightEnable) {
+    tractiveCoreData.tractive.commandedTorque = 0;
+  }
 
   // check if ready to drive
   if (!tractiveCoreData.tractive.readyToDrive) {
@@ -1042,6 +1196,63 @@ uint16_t CalculateThrottleResponse(uint16_t value)
 
   // cast final calculated response to an uint16_t
   return (uint16_t)calculatedResponse;
+}
+
+
+/**
+ * @brief traction control
+*/
+uint16_t TractionControl() {
+  // inits
+  float rearWheelSpeedRatio = 0.0f;
+  float averageRearWheelSpeed = 0.0f;
+  bool corneringTractionControlEnable;
+  bool spinTractionControlEnable;
+
+  // compare rear wheels
+  averageRearWheelSpeed = (tractiveCoreData.sensors.brWheelSpeed + tractiveCoreData.sensors.blWheelSpeed) / 2;
+  if (tractiveCoreData.sensors.brWheelSpeed > tractiveCoreData.sensors.blWheelSpeed) {
+    rearWheelSpeedRatio = tractiveCoreData.sensors.blWheelSpeed / tractiveCoreData.sensors.brWheelSpeed;
+  }
+  else{
+    rearWheelSpeedRatio = tractiveCoreData.sensors.brWheelSpeed / tractiveCoreData.sensors.blWheelSpeed;
+  }
+
+  // cornering scenario
+  if (rearWheelSpeedRatio > TRAC_CON_CORNER_ENABLE) {
+    corneringTractionControlEnable = true;
+  }
+  else {
+    corneringTractionControlEnable = false;
+  }
+
+  // spinning rear wheels scenario
+  if (averageRearWheelSpeed > (tractiveCoreData.sensors.frontWheelsSpeed * (1 - TRAC_CON_ENABLE_BIAS))) {
+    spinTractionControlEnable = true;
+  }
+  else {
+    spinTractionControlEnable = false;
+  }
+
+  // apply traction control
+  if (corneringTractionControlEnable || spinTractionControlEnable) {
+    tractiveCoreData.tractive.tractionControlModifier -= TRAC_CON_MOD_STEP;
+  }
+  else {
+    tractiveCoreData.tractive.tractionControlModifier += (TRAC_CON_MOD_STEP * TRAC_CON_STEP_INCREASE_MOD);
+  }
+
+  // error check result
+  if (tractiveCoreData.tractive.tractionControlModifier <= TRAC_CON_MAX_MOD) {
+    tractiveCoreData.tractive.tractionControlModifier = TRAC_CON_MAX_MOD;
+  }
+
+  if (tractiveCoreData.tractive.tractionControlModifier >= 1) {
+    tractiveCoreData.tractive.tractionControlModifier = 1;
+  }
+
+  // calculate an adjusted commanded torque
+  return (uint16_t)(tractiveCoreData.tractive.commandedTorque * tractiveCoreData.tractive.tractionControlModifier);
 }
 
 

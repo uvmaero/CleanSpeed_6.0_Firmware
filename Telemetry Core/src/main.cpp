@@ -31,10 +31,6 @@
 */
 
 
-// definitions
-#define TIRE_DIAMETER                   20.0        // diameter of the vehicle's tires in inches
-#define WHEEL_RPM_CALC_THRESHOLD        100         // the number of times the hall effect sensor is tripped before calculating vehicle speed
-
 // tasks & timers
 #define IO_READ_INTERVAL                200000      // 0.1 seconds in microseconds
 #define SERIAL_UPDATE_INTERVAL          250000      // 0.25 seconds in microseconds
@@ -102,6 +98,9 @@ TelemetryCoreData telemetryCoreData = {
       
       .currentSpeed = 0.0f,
 
+      .tractionControlEnable = true,
+      .tractionControlModifier = 1.00f,
+
       .coastRegen = 0,
       .brakeRegen = 0,
     },
@@ -116,6 +115,18 @@ TelemetryCoreData telemetryCoreData = {
       .vicoreTemp = 0.0f,
 
       .glvReading = 0.0f,
+
+      .frontWheelsSpeed = 0.0f,
+      .frontWheelSpeedCount = 0,
+      .frontWheelSpeedTime = 0,
+
+      .brWheelSpeed = 0.0f,
+      .brWheelSpeedCount = 0,
+      .brWheelSpeedTime = 0,
+
+      .blWheelSpeed = 0.0f,
+      .blWheelSpeedCount = 0,
+      .blWheelSpeedTime = 0,
     },
 
     // inputs
@@ -162,14 +173,6 @@ TelemetryCoreData telemetryCoreData = {
     .flSuspensionDamper = 0,
     .brSuspensionDamper = 0,
     .blSuspensionDamper = 0,
-  },
-
-  // wheel speed sensors
-  .wheelSpeed = {
-    .frWheelSpeed = 0,
-    .flWheelSpeed = 0,
-    .brWheelSpeed = 0,
-    .blWheelSpeed = 0,
   },
 
   // tire temperature sensors
@@ -292,11 +295,6 @@ void setup() {
   pinMode(FL_SUSPENSION_DAMPER_PIN, INPUT);
   pinMode(BR_SUSPENSION_DAMPER_PIN, INPUT);
   pinMode(BL_SUSPENSION_DAMPER_PIN, INPUT);
-
-  pinMode(FR_HALL_EFFECT_PIN, INPUT);
-  pinMode(FL_HALL_EFFECT_PIN, INPUT);
-  pinMode(BR_HALL_EFFECT_PIN, INPUT);
-  pinMode(BL_HALL_EFFECT_PIN, INPUT);
 
   pinMode(FR_TIRE_TEMP_PIN, INPUT);
   pinMode(FL_TIRE_TEMP_PIN, INPUT);
@@ -450,8 +448,6 @@ void SerialUpdateCallback() {
 void IOReadTask(void* pvParameters)
 {
   // dampers
-
-  // wheel speed
 
   // tire temps
 
