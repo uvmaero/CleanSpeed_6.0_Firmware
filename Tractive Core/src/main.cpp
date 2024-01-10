@@ -57,7 +57,6 @@
 #define PRECHARGE_FLOOR                 0.8         // precentage of bus voltage rinehart should be at
 
 // TWAI
-#define NUM_TWAI_READS                  3           // the number of messages to read from RX FIFO the TWAI read task is called, 5 is max capacity of the queue!
 #define RINE_MOTOR_INFO_ADDR            0x0A5       // get motor information from Rinehart 
 #define RINE_VOLT_INFO_ADDR             0x0A7       // get rinehart electrical information
 #define RINE_BUS_INFO_ADDR              0x0AA       // get rinehart relay information 
@@ -462,7 +461,8 @@ void TWAIUpdateCallback()
  * @brief callback function to create a new Precharge task 
  * 
  */
-void PrechargeCallback() {
+void PrechargeCallback() 
+{
   portENTER_CRITICAL_ISR(&timerMux);
   
   // inits
@@ -488,7 +488,8 @@ void PrechargeCallback() {
 /**
  * ISR for caluclating front wheel speeds 
 */
-void FrontWheelSpeedISR() {
+void FrontWheelSpeedISR() 
+{
   portENTER_CRITICAL_ISR(&timerMux);
 
   // increment pass counter
@@ -518,7 +519,8 @@ void FrontWheelSpeedISR() {
 /**
  * ISR for caluclating rear right wheel speeds 
 */
-void BRWheelSpeedISR() {
+void BRWheelSpeedISR() 
+{
   portENTER_CRITICAL_ISR(&timerMux);
 
   // increment pass counter
@@ -548,7 +550,8 @@ void BRWheelSpeedISR() {
 /**
  * ISR for caluclating rear left wheel speeds 
 */
-void BLWheelSpeedISR() {
+void BLWheelSpeedISR() 
+{
   portENTER_CRITICAL_ISR(&timerMux);
 
   // increment pass counter
@@ -589,109 +592,109 @@ void BLWheelSpeedISR() {
  */
 void IOReadTask(void* pvParameters)
 {
-  // read pedals
-  uint16_t tmpPedal1 = analogReadMilliVolts(PEDAL_1_PIN);
-  tmpPedal1 = map(tmpPedal1, 290, 1425, PEDAL_MIN, PEDAL_MAX);                // (0.29V - 1.379V) | values found via testing
-  tractiveCoreData.inputs.pedal1 = CalculateThrottleResponse(tmpPedal1);
+  for (;;) 
+  {
+    // read pedals
+    uint16_t tmpPedal1 = analogReadMilliVolts(PEDAL_1_PIN);
+    tmpPedal1 = map(tmpPedal1, 290, 1425, PEDAL_MIN, PEDAL_MAX);                // (0.29V - 1.379V) | values found via testing
+    tractiveCoreData.inputs.pedal1 = CalculateThrottleResponse(tmpPedal1);
 
-  uint16_t tmpPedal0 = analogReadMilliVolts(PEDAL_0_PIN);                     //  (0.59V - 2.75V) | values found via testing
-  tmpPedal0 = map(tmpPedal0, 575, 2810, PEDAL_MIN, PEDAL_MAX);
-  tractiveCoreData.inputs.pedal0 = CalculateThrottleResponse(tmpPedal0);
+    uint16_t tmpPedal0 = analogReadMilliVolts(PEDAL_0_PIN);                     //  (0.59V - 2.75V) | values found via testing
+    tmpPedal0 = map(tmpPedal0, 575, 2810, PEDAL_MIN, PEDAL_MAX);
+    tractiveCoreData.inputs.pedal0 = CalculateThrottleResponse(tmpPedal0);
 
-  // calculate commanded torque
-  GetCommandedTorque();
+    // calculate commanded torque
+    GetCommandedTorque();
 
-  // calculate current speed in mph
-  float tmpAverageWheelRpm = (tractiveCoreData.sensors.frontWheelsSpeed + tractiveCoreData.sensors.brWheelSpeed + tractiveCoreData.sensors.blWheelSpeed) / 3;
-  tractiveCoreData.tractive.currentSpeed = tmpAverageWheelRpm * TIRE_DIAMETER * 3.14 * (60 / 63360);   // 63360 inches in a mile
+    // calculate current speed in mph
+    float tmpAverageWheelRpm = (tractiveCoreData.sensors.frontWheelsSpeed + tractiveCoreData.sensors.brWheelSpeed + tractiveCoreData.sensors.blWheelSpeed) / 3;
+    tractiveCoreData.tractive.currentSpeed = tmpAverageWheelRpm * TIRE_DIAMETER * 3.14 * (60 / 63360);   // 63360 inches in a mile
 
-  // brake pressure / pedal
-  float tmpFrontBrake = analogReadMilliVolts(FRONT_BRAKE_PIN);
-  tractiveCoreData.inputs.frontBrake = map(tmpFrontBrake, 265, 855, PEDAL_MIN, PEDAL_MAX);  // (0.26V - 0.855V) | values found via testing
+    // brake pressure / pedal
+    float tmpFrontBrake = analogReadMilliVolts(FRONT_BRAKE_PIN);
+    tractiveCoreData.inputs.frontBrake = map(tmpFrontBrake, 265, 855, PEDAL_MIN, PEDAL_MAX);  // (0.26V - 0.855V) | values found via testing
 
-  float tmpRearBrake = analogReadMilliVolts(REAR_BRAKE_PIN);
-  tractiveCoreData.inputs.rearBrake = map(tmpRearBrake, 265, 855, PEDAL_MIN, PEDAL_MAX);    // (0.26V - 0.855V) | values found via testing
+    float tmpRearBrake = analogReadMilliVolts(REAR_BRAKE_PIN);
+    tractiveCoreData.inputs.rearBrake = map(tmpRearBrake, 265, 855, PEDAL_MIN, PEDAL_MAX);    // (0.26V - 0.855V) | values found via testing
 
-  uint16_t brakeAverage = (tractiveCoreData.inputs.frontBrake + tractiveCoreData.inputs.rearBrake) / 2;
-  if (brakeAverage >= BRAKE_LIGHT_THRESHOLD) {
-    tractiveCoreData.outputs.brakeLightEnable = true;
-  }
-  else {
-    tractiveCoreData.outputs.brakeLightEnable = false;
-  }
+    uint16_t brakeAverage = (tractiveCoreData.inputs.frontBrake + tractiveCoreData.inputs.rearBrake) / 2;
+    if (brakeAverage >= BRAKE_LIGHT_THRESHOLD) {
+      tractiveCoreData.outputs.brakeLightEnable = true;
+    }
+    else {
+      tractiveCoreData.outputs.brakeLightEnable = false;
+    }
 
-  // traction control
-  if (digitalRead(TRACTION_CONTROL_SWITCH_PIN == HIGH)) {
-    tractiveCoreData.tractive.tractionControlEnable = true;
-  }
-  else {
-    tractiveCoreData.tractive.tractionControlEnable = false;
-  }
+    // traction control
+    if (digitalRead(TRACTION_CONTROL_SWITCH_PIN == HIGH)) {
+      tractiveCoreData.tractive.tractionControlEnable = true;
+    }
+    else {
+      tractiveCoreData.tractive.tractionControlEnable = false;
+    }
 
-  // start button 
-  if ((digitalRead(START_BUTTON_PIN) == LOW) && tractiveCoreData.tractive.readyToDrive && !tractiveCoreData.tractive.enableInverter) {
-    // only activate the buzzer is the inverter is not enabled, we don't need to repeat actions
-    tractiveCoreData.outputs.buzzerEnable = true;
-  }
+    // start button 
+    if ((digitalRead(START_BUTTON_PIN) == LOW) && tractiveCoreData.tractive.readyToDrive && !tractiveCoreData.tractive.enableInverter) {
+      // only activate the buzzer is the inverter is not enabled, we don't need to repeat actions
+      tractiveCoreData.outputs.buzzerEnable = true;
+    }
 
-  // drive mode button
-  if (digitalRead(DRIVE_MODE_BUTTON_PIN) == LOW) {
-    switch (tractiveCoreData.tractive.driveMode) {
-    case SLOW:
-      tractiveCoreData.tractive.driveMode = ECO;
-      break;
+    // drive mode button
+    if (digitalRead(DRIVE_MODE_BUTTON_PIN) == LOW) {
+      switch (tractiveCoreData.tractive.driveMode) {
+      case SLOW:
+        tractiveCoreData.tractive.driveMode = ECO;
+        break;
 
-    case ECO:
-      tractiveCoreData.tractive.driveMode = FAST;
-      break;
+      case ECO:
+        tractiveCoreData.tractive.driveMode = FAST;
+        break;
 
-    case FAST:
-      tractiveCoreData.tractive.driveMode = SLOW;
-      break;
+      case FAST:
+        tractiveCoreData.tractive.driveMode = SLOW;
+        break;
 
-    default:
-      tractiveCoreData.tractive.driveMode = ECO;
-      break;
+      default:
+        tractiveCoreData.tractive.driveMode = ECO;
+        break;
+      }
+    }
+
+    // faults
+    if (digitalRead(BMS_FAULT_PIN) == LOW) {
+      tractiveCoreData.sensors.bmsFault = false;
+    }
+    else {
+      tractiveCoreData.sensors.bmsFault = true;
+    }
+
+    if (digitalRead(IMD_FAULT_PIN) == LOW) {
+      tractiveCoreData.sensors.imdFault = false;
+    }
+    else {
+      tractiveCoreData.sensors.imdFault = true;
+    }
+
+    // cooling 
+    int tmpCoolingIn = analogReadMilliVolts(COOLING_IN_TEMP_PIN);
+    tractiveCoreData.sensors.coolingTempIn = map(tmpCoolingIn, 0, 2500, 0, 100);      // find thermistor values via testing 
+
+    int tmpCoolingOut = analogReadMilliVolts(COOLING_OUT_TEMP_PIN);
+    tractiveCoreData.sensors.coolingTempOut = map(tmpCoolingOut, 0, 2500, 0, 100);    // find thermistor values via testing 
+
+    if (tractiveCoreData.sensors.coolingTempIn >= COOLING_ENABLE_THRESHOLD) {
+      tractiveCoreData.outputs.fansEnable = true;
+    }
+    if (tractiveCoreData.sensors.coolingTempIn <= COOLING_DISABLE_THRESHOLD) {
+      tractiveCoreData.outputs.fansEnable = false;
+    }
+
+    // debugging
+    if (debugger.debugEnabled) {
+      debugger.IO_data = tractiveCoreData;
+      debugger.ioReadTaskCount++;
     }
   }
-
-  // faults
-  if (digitalRead(BMS_FAULT_PIN) == LOW) {
-    tractiveCoreData.sensors.bmsFault = false;
-  }
-  else {
-    tractiveCoreData.sensors.bmsFault = true;
-  }
-
-  if (digitalRead(IMD_FAULT_PIN) == LOW) {
-    tractiveCoreData.sensors.imdFault = false;
-  }
-  else {
-    tractiveCoreData.sensors.imdFault = true;
-  }
-
-  // cooling 
-  int tmpCoolingIn = analogReadMilliVolts(COOLING_IN_TEMP_PIN);
-  tractiveCoreData.sensors.coolingTempIn = map(tmpCoolingIn, 0, 2500, 0, 100);      // find thermistor values via testing 
-
-  int tmpCoolingOut = analogReadMilliVolts(COOLING_OUT_TEMP_PIN);
-  tractiveCoreData.sensors.coolingTempOut = map(tmpCoolingOut, 0, 2500, 0, 100);    // find thermistor values via testing 
-
-  if (tractiveCoreData.sensors.coolingTempIn >= COOLING_ENABLE_THRESHOLD) {
-    tractiveCoreData.outputs.fansEnable = true;
-  }
-  if (tractiveCoreData.sensors.coolingTempIn <= COOLING_DISABLE_THRESHOLD) {
-    tractiveCoreData.outputs.fansEnable = false;
-  }
-
-  // debugging
-  if (debugger.debugEnabled) {
-    debugger.IO_data = tractiveCoreData;
-    debugger.ioReadTaskCount++;
-  }
-
-  // end task
-  vTaskDelete(NULL);
 }
 
 
@@ -702,80 +705,80 @@ void IOReadTask(void* pvParameters)
  */
 void IOWriteTask(void* pvParameters)
 {
-  // brake light 
-  if (tractiveCoreData.outputs.brakeLightEnable) {
-    digitalWrite(BRAKE_LIGHT_PIN, HIGH);
-  }
-  else {
-    digitalWrite(BRAKE_LIGHT_PIN, LOW);
-  }
+  for (;;) 
+  {
+    // brake light 
+    if (tractiveCoreData.outputs.brakeLightEnable) {
+      digitalWrite(BRAKE_LIGHT_PIN, HIGH);
+    }
+    else {
+      digitalWrite(BRAKE_LIGHT_PIN, LOW);
+    }
 
-  // cooling
-  if (tractiveCoreData.outputs.fansEnable) {
-    digitalWrite(FAN_ENABLE_PIN, HIGH);
-  }
-  else {
-    digitalWrite(FAN_ENABLE_PIN, LOW);
-  }
+    // cooling
+    if (tractiveCoreData.outputs.fansEnable) {
+      digitalWrite(FAN_ENABLE_PIN, HIGH);
+    }
+    else {
+      digitalWrite(FAN_ENABLE_PIN, LOW);
+    }
 
-  // buzzer
-  if (tractiveCoreData.outputs.buzzerEnable) {
-    digitalWrite(BUZZER_PIN, HIGH);
-    tractiveCoreData.outputs.buzzerCounter++;
+    // buzzer
+    if (tractiveCoreData.outputs.buzzerEnable) {
+      digitalWrite(BUZZER_PIN, HIGH);
+      tractiveCoreData.outputs.buzzerCounter++;
 
-    if (tractiveCoreData.outputs.buzzerCounter >= (2 * (IO_UPDATE_INTERVAL / 10000)))    // convert to activations per second and multiply by 2
-    {
-      // update buzzer state and turn off the buzzer
-      tractiveCoreData.outputs.buzzerEnable = false;
-      tractiveCoreData.outputs.buzzerCounter = 0;                        // reset buzzer count
-      digitalWrite(BUZZER_PIN, LOW);
+      if (tractiveCoreData.outputs.buzzerCounter >= (2 * (IO_UPDATE_INTERVAL / 10000)))    // convert to activations per second and multiply by 2
+      {
+        // update buzzer state and turn off the buzzer
+        tractiveCoreData.outputs.buzzerEnable = false;
+        tractiveCoreData.outputs.buzzerCounter = 0;                        // reset buzzer count
+        digitalWrite(BUZZER_PIN, LOW);
 
-      tractiveCoreData.tractive.enableInverter = true;                   // enable the inverter
+        tractiveCoreData.tractive.enableInverter = true;                   // enable the inverter
+      }
+    }
+
+    // fault leds
+    if (tractiveCoreData.sensors.bmsFault) {
+      digitalWrite(BMS_FAULT_LED_PIN, HIGH);
+    }
+    else {
+      digitalWrite(BMS_FAULT_LED_PIN, LOW);
+    }
+
+    if (tractiveCoreData.sensors.imdFault) {
+      digitalWrite(IMD_FAULT_LED_PIN, HIGH);
+    }
+    else {
+      digitalWrite(IMD_FAULT_LED_PIN, LOW);
+    }
+
+    // drive mode led
+    // TODO: implement this doing some rgb led stuff
+
+    // cooling led
+    if (tractiveCoreData.outputs.fansEnable) {
+      digitalWrite(FANS_ACTIVE_LED_PIN, HIGH);
+    }
+    else {
+      digitalWrite(FANS_ACTIVE_LED_PIN, LOW);
+    }
+
+    // ready to drive LED
+    if (tractiveCoreData.tractive.readyToDrive) {
+      digitalWrite(RTD_LED_PIN, HIGH);
+    }
+    else {
+      digitalWrite(RTD_LED_PIN, LOW);
+    }
+
+    // debugging
+    if (debugger.debugEnabled) {
+      debugger.IO_data = tractiveCoreData;
+      debugger.ioWriteTaskCount++;
     }
   }
-
-  // fault leds
-  if (tractiveCoreData.sensors.bmsFault) {
-    digitalWrite(BMS_FAULT_LED_PIN, HIGH);
-  }
-  else {
-    digitalWrite(BMS_FAULT_LED_PIN, LOW);
-  }
-
-  if (tractiveCoreData.sensors.imdFault) {
-    digitalWrite(IMD_FAULT_LED_PIN, HIGH);
-  }
-  else {
-    digitalWrite(IMD_FAULT_LED_PIN, LOW);
-  }
-
-  // drive mode led
-  // TODO: implement this doing some rgb led stuff
-
-  // cooling led
-  if (tractiveCoreData.outputs.fansEnable) {
-    digitalWrite(FANS_ACTIVE_LED_PIN, HIGH);
-  }
-  else {
-    digitalWrite(FANS_ACTIVE_LED_PIN, LOW);
-  }
-
-  // ready to drive LED
-  if (tractiveCoreData.tractive.readyToDrive) {
-    digitalWrite(RTD_LED_PIN, HIGH);
-  }
-  else {
-    digitalWrite(RTD_LED_PIN, LOW);
-  }
-
-  // debugging
-  if (debugger.debugEnabled) {
-    debugger.IO_data = tractiveCoreData;
-    debugger.ioWriteTaskCount++;
-  }
-
-  // end task
-  vTaskDelete(NULL);
 }
 
 
@@ -786,20 +789,20 @@ void IOWriteTask(void* pvParameters)
  */
 void TWAIReadTask(void* pvParameters)
 {
-  // inits
-  twai_message_t incomingMessage;
-  uint8_t tmp1, tmp2;
-  int id;
+  for (;;) {
+    // inits
+    twai_message_t incomingMessage;
+    uint8_t tmp1, tmp2;
+    int id;
 
-  // if rx queue is full clear it (this is bad, implement twai message filtering)
-  uint32_t alerts;
-  twai_read_alerts(&alerts, pdMS_TO_TICKS(TWAI_BLOCK_DELAY));
-  if (alerts & TWAI_ALERT_RX_QUEUE_FULL) {
-    twai_clear_receive_queue();
-  }
+    // if rx queue is full clear it (this is bad, implement twai message filtering)
+    uint32_t alerts;
+    twai_read_alerts(&alerts, pdMS_TO_TICKS(TWAI_BLOCK_DELAY));
+    if (alerts & TWAI_ALERT_RX_QUEUE_FULL) {
+      twai_clear_receive_queue();
+    }
 
-  // check for new messages in the CAN buffer
-  for (int i = 0; i < NUM_TWAI_READS; ++i) {
+    // check for new messages in the CAN buffer
     if (twai_receive(&incomingMessage, pdMS_TO_TICKS(TWAI_BLOCK_DELAY)) == ESP_OK) { // if there are messages to be read
       id = incomingMessage.identifier;
       
@@ -838,13 +841,11 @@ void TWAIReadTask(void* pvParameters)
         break;
 
         default:
+          // do nothing
         break;
       }
     }
   }
-
-  // end task
-  vTaskDelete(NULL);
 }
 
 
@@ -855,116 +856,116 @@ void TWAIReadTask(void* pvParameters)
  */
 void TWAIWriteTask(void* pvParameters)
 {
-  // inits
-  bool sentStatus = false;
+  for (;;)
+  {
+    // inits
+    bool sentStatus = false;
 
-  // tractive system control message
-  twai_message_t rinehartMessage;
-  rinehartMessage.identifier = RINE_MOTOR_CONTROL_ADDR;
-  rinehartMessage.flags = TWAI_MSG_FLAG_NONE;
-  rinehartMessage.data_length_code = 8;
+    // tractive system control message
+    twai_message_t rinehartMessage;
+    rinehartMessage.identifier = RINE_MOTOR_CONTROL_ADDR;
+    rinehartMessage.flags = TWAI_MSG_FLAG_NONE;
+    rinehartMessage.data_length_code = 8;
 
-  // build message
-  rinehartMessage.data[0] = tractiveCoreData.tractive.commandedTorque & 0xFF;     // commanded torque is sent across two bytes
-  rinehartMessage.data[1] = tractiveCoreData.tractive.commandedTorque >> 8;
-  rinehartMessage.data[2] = 0x00;                                                 // speed command NOT USING
-  rinehartMessage.data[3] = 0x00;                                                 // speed command NOT USING
-  rinehartMessage.data[4] = (uint8_t)(tractiveCoreData.tractive.driveDirection);  // 1: forward | 0: reverse (we run in reverse!)
-  rinehartMessage.data[5] = (uint8_t)(tractiveCoreData.tractive.enableInverter);  // enable inverter command
-  rinehartMessage.data[6] = (MAX_TORQUE * 10) & 0xFF;                             // this is the max torque value that rinehart will push
-  rinehartMessage.data[7] = (MAX_TORQUE * 10) >> 8;                               // rinehart expects 10x value spread across 2 bytes
+    // build message
+    rinehartMessage.data[0] = tractiveCoreData.tractive.commandedTorque & 0xFF;     // commanded torque is sent across two bytes
+    rinehartMessage.data[1] = tractiveCoreData.tractive.commandedTorque >> 8;
+    rinehartMessage.data[2] = 0x00;                                                 // speed command NOT USING
+    rinehartMessage.data[3] = 0x00;                                                 // speed command NOT USING
+    rinehartMessage.data[4] = (uint8_t)(tractiveCoreData.tractive.driveDirection);  // 1: forward | 0: reverse (we run in reverse!)
+    rinehartMessage.data[5] = (uint8_t)(tractiveCoreData.tractive.enableInverter);  // enable inverter command
+    rinehartMessage.data[6] = (MAX_TORQUE * 10) & 0xFF;                             // this is the max torque value that rinehart will push
+    rinehartMessage.data[7] = (MAX_TORQUE * 10) >> 8;                               // rinehart expects 10x value spread across 2 bytes
 
-  // queue message for transmission
-  esp_err_t rinehartCtrlResult = twai_transmit(&rinehartMessage, pdMS_TO_TICKS(TWAI_BLOCK_DELAY));
-
-
-  // --- precharge messages --- // 
-  twai_message_t prechargeCtrlMessage;
-  prechargeCtrlMessage.identifier = RINE_BUS_CONTROL_ADDR;
-  prechargeCtrlMessage.flags = TWAI_MSG_FLAG_NONE;
-  prechargeCtrlMessage.data_length_code = 8;
-
-  // build rinehart message based on precharge state
-  switch (tractiveCoreData.tractive.prechargeState) {
-    case PRECHARGE_OFF:
-      // message is sent to rinehart to turn everything off
-      prechargeCtrlMessage.data[0] = 0x01;          // parameter address. LSB
-      prechargeCtrlMessage.data[1] = 0x00;          // parameter address. MSB
-      prechargeCtrlMessage.data[2] = 0x01;          // Read / Write Mode (0 = read | 1 = write)
-      prechargeCtrlMessage.data[3] = 0x00;          // N/A
-      prechargeCtrlMessage.data[4] = 0x00;          // Data: ( 0: all off | 1: relay 1 on | 2: relay 2 on | 3: relay 1 & 2 on )
-      prechargeCtrlMessage.data[5] = 0x55;          // 0x55 means external relay control
-      prechargeCtrlMessage.data[6] = 0x00;          // N/A
-      prechargeCtrlMessage.data[7] = 0x00;          // N/A
-    break;
-
-    // do precharge
-    case PRECHARGE_ON:
-      // message is sent to rinehart to turn on precharge relay
-      // precharge relay is on relay 1 in Rinehart
-      prechargeCtrlMessage.data[0] = 0x01;          // parameter address. LSB
-      prechargeCtrlMessage.data[1] = 0x00;          // parameter address. MSB
-      prechargeCtrlMessage.data[2] = 0x01;          // Read / Write Mode (0 = read | 1 = write)
-      prechargeCtrlMessage.data[3] = 0x00;          // N/A
-      prechargeCtrlMessage.data[4] = 0x01;          // Data: ( 0: all off | 1: relay 1 on | 2: relay 2 on | 3: relay 1 & 2 on )
-      prechargeCtrlMessage.data[5] = 0x55;          // 0x55 means external relay control
-      prechargeCtrlMessage.data[6] = 0x00;          // N/A
-      prechargeCtrlMessage.data[7] = 0x00;          // N/A
-    break;
+    // queue message for transmission
+    esp_err_t rinehartCtrlResult = twai_transmit(&rinehartMessage, pdMS_TO_TICKS(TWAI_BLOCK_DELAY));
 
 
-    // precharge complete!
-    case PRECHARGE_DONE:
-      // message is sent to rinehart to turn everything on
-      // Keep precharge relay on and turn on main contactor
-      prechargeCtrlMessage.data[0] = 0x01;          // parameter address. LSB
-      prechargeCtrlMessage.data[1] = 0x00;          // parameter address. MSB
-      prechargeCtrlMessage.data[2] = 0x01;          // Read / Write Mode (0 = read | 1 = write)
-      prechargeCtrlMessage.data[3] = 0x00;          // N/A
-      prechargeCtrlMessage.data[4] = 0x03;          // Data: ( 0: all off | 1: relay 1 on | 2: relay 2 on | 3: relay 1 & 2 on )
-      prechargeCtrlMessage.data[5] = 0x55;          // 0x55 means external relay control
-      prechargeCtrlMessage.data[6] = 0x00;          // N/A
-      prechargeCtrlMessage.data[7] = 0x00;          // N/A
-    break;
+    // --- precharge messages --- // 
+    twai_message_t prechargeCtrlMessage;
+    prechargeCtrlMessage.identifier = RINE_BUS_CONTROL_ADDR;
+    prechargeCtrlMessage.flags = TWAI_MSG_FLAG_NONE;
+    prechargeCtrlMessage.data_length_code = 8;
+
+    // build rinehart message based on precharge state
+    switch (tractiveCoreData.tractive.prechargeState) {
+      case PRECHARGE_OFF:
+        // message is sent to rinehart to turn everything off
+        prechargeCtrlMessage.data[0] = 0x01;          // parameter address. LSB
+        prechargeCtrlMessage.data[1] = 0x00;          // parameter address. MSB
+        prechargeCtrlMessage.data[2] = 0x01;          // Read / Write Mode (0 = read | 1 = write)
+        prechargeCtrlMessage.data[3] = 0x00;          // N/A
+        prechargeCtrlMessage.data[4] = 0x00;          // Data: ( 0: all off | 1: relay 1 on | 2: relay 2 on | 3: relay 1 & 2 on )
+        prechargeCtrlMessage.data[5] = 0x55;          // 0x55 means external relay control
+        prechargeCtrlMessage.data[6] = 0x00;          // N/A
+        prechargeCtrlMessage.data[7] = 0x00;          // N/A
+      break;
+
+      // do precharge
+      case PRECHARGE_ON:
+        // message is sent to rinehart to turn on precharge relay
+        // precharge relay is on relay 1 in Rinehart
+        prechargeCtrlMessage.data[0] = 0x01;          // parameter address. LSB
+        prechargeCtrlMessage.data[1] = 0x00;          // parameter address. MSB
+        prechargeCtrlMessage.data[2] = 0x01;          // Read / Write Mode (0 = read | 1 = write)
+        prechargeCtrlMessage.data[3] = 0x00;          // N/A
+        prechargeCtrlMessage.data[4] = 0x01;          // Data: ( 0: all off | 1: relay 1 on | 2: relay 2 on | 3: relay 1 & 2 on )
+        prechargeCtrlMessage.data[5] = 0x55;          // 0x55 means external relay control
+        prechargeCtrlMessage.data[6] = 0x00;          // N/A
+        prechargeCtrlMessage.data[7] = 0x00;          // N/A
+      break;
 
 
-    // error state
-    case PRECHARGE_ERROR:
-      // message is sent to rinehart to turn everything off
-      prechargeCtrlMessage.data[0] = 0x01;          // parameter address. LSB
-      prechargeCtrlMessage.data[1] = 0x00;          // parameter address. MSB
-      prechargeCtrlMessage.data[2] = 0x01;          // Read / Write Mode (0 = read | 1 = write)
-      prechargeCtrlMessage.data[3] = 0x00;          // N/A
-      prechargeCtrlMessage.data[4] = 0x00;          // Data: ( 0: all off | 1: relay 1 on | 2: relay 2 on | 3: relay 1 & 2 on )
-      prechargeCtrlMessage.data[5] = 0x55;          // 0x55 means external relay control
-      prechargeCtrlMessage.data[6] = 0x00;          // N/A
-      prechargeCtrlMessage.data[7] = 0x00;          // N/A
-    break;
-  }
+      // precharge complete!
+      case PRECHARGE_DONE:
+        // message is sent to rinehart to turn everything on
+        // Keep precharge relay on and turn on main contactor
+        prechargeCtrlMessage.data[0] = 0x01;          // parameter address. LSB
+        prechargeCtrlMessage.data[1] = 0x00;          // parameter address. MSB
+        prechargeCtrlMessage.data[2] = 0x01;          // Read / Write Mode (0 = read | 1 = write)
+        prechargeCtrlMessage.data[3] = 0x00;          // N/A
+        prechargeCtrlMessage.data[4] = 0x03;          // Data: ( 0: all off | 1: relay 1 on | 2: relay 2 on | 3: relay 1 & 2 on )
+        prechargeCtrlMessage.data[5] = 0x55;          // 0x55 means external relay control
+        prechargeCtrlMessage.data[6] = 0x00;          // N/A
+        prechargeCtrlMessage.data[7] = 0x00;          // N/A
+      break;
 
-  // queue rinehart message for transmission
-  esp_err_t prechargeCtrlMessageResult = twai_transmit(&prechargeCtrlMessage, pdMS_TO_TICKS(TWAI_BLOCK_DELAY));
 
-  // debugging
-  if (debugger.debugEnabled) {
-    debugger.TWAI_rinehartCtrlResult = rinehartCtrlResult;
-    // copy message
-    for (int i = 0; i < 8; ++i) {
-      debugger.TWAI_rinehartCtrlMessage[i] = rinehartMessage.data[i];
+      // error state
+      case PRECHARGE_ERROR:
+        // message is sent to rinehart to turn everything off
+        prechargeCtrlMessage.data[0] = 0x01;          // parameter address. LSB
+        prechargeCtrlMessage.data[1] = 0x00;          // parameter address. MSB
+        prechargeCtrlMessage.data[2] = 0x01;          // Read / Write Mode (0 = read | 1 = write)
+        prechargeCtrlMessage.data[3] = 0x00;          // N/A
+        prechargeCtrlMessage.data[4] = 0x00;          // Data: ( 0: all off | 1: relay 1 on | 2: relay 2 on | 3: relay 1 & 2 on )
+        prechargeCtrlMessage.data[5] = 0x55;          // 0x55 means external relay control
+        prechargeCtrlMessage.data[6] = 0x00;          // N/A
+        prechargeCtrlMessage.data[7] = 0x00;          // N/A
+      break;
     }
 
-    debugger.TWAI_prechargeCtrlResult = prechargeCtrlMessageResult;
-    // copy message 
-    for (int i = 0; i < 8; ++i) {
-      debugger.TWAI_prechargeCtrlMessage[i] = prechargeCtrlMessage.data[i];
+    // queue rinehart message for transmission
+    esp_err_t prechargeCtrlMessageResult = twai_transmit(&prechargeCtrlMessage, pdMS_TO_TICKS(TWAI_BLOCK_DELAY));
+
+    // debugging
+    if (debugger.debugEnabled) {
+      debugger.TWAI_rinehartCtrlResult = rinehartCtrlResult;
+      // copy message
+      for (int i = 0; i < 8; ++i) {
+        debugger.TWAI_rinehartCtrlMessage[i] = rinehartMessage.data[i];
+      }
+
+      debugger.TWAI_prechargeCtrlResult = prechargeCtrlMessageResult;
+      // copy message 
+      for (int i = 0; i < 8; ++i) {
+        debugger.TWAI_prechargeCtrlMessage[i] = prechargeCtrlMessage.data[i];
+      }
+
+      // scheduler counter update
+      debugger.twaiWriteTaskCount++;
     }
-
-    // scheduler counter update
-    debugger.twaiWriteTaskCount++;
   }
-
-  // end task
-  vTaskDelete(NULL);
 }
 
 
@@ -973,85 +974,86 @@ void TWAIWriteTask(void* pvParameters)
  * 
  * @param pvParameters 
  */
-void PrechargeTask(void* pvParameters) {
-  // inits
-  twai_message_t outgoingMessage;
-  int result;
+void PrechargeTask(void* pvParameters)
+{
+  for (;;)
+  {
+    // inits
+    twai_message_t outgoingMessage;
+    int result;
 
-  // precharge state machine
-  switch (tractiveCoreData.tractive.prechargeState) {
+    // precharge state machine
+    switch (tractiveCoreData.tractive.prechargeState) {
 
-    // prepare for and start precharge
-    case PRECHARGE_OFF:
+      // prepare for and start precharge
+      case PRECHARGE_OFF:
 
-      // set ready to drive state
-      tractiveCoreData.tractive.readyToDrive = false;
+        // set ready to drive state
+        tractiveCoreData.tractive.readyToDrive = false;
 
-      if (tractiveCoreData.sensors.imdFault == false && tractiveCoreData.sensors.bmsFault == false) {
-        tractiveCoreData.tractive.prechargeState = PRECHARGE_ON;
-      }
+        if (tractiveCoreData.sensors.imdFault == false && tractiveCoreData.sensors.bmsFault == false) {
+          tractiveCoreData.tractive.prechargeState = PRECHARGE_ON;
+        }
 
-    break;
+      break;
 
-    // do precharge
-    case PRECHARGE_ON:
+      // do precharge
+      case PRECHARGE_ON:
 
-      // set ready to drive state
-      tractiveCoreData.tractive.readyToDrive = false;
+        // set ready to drive state
+        tractiveCoreData.tractive.readyToDrive = false;
 
-      // ensure voltages are above correct values
-      if ((tractiveCoreData.tractive.rinehartVoltage >= (tractiveCoreData.orion.busVoltage * PRECHARGE_FLOOR)) &&
-      (tractiveCoreData.orion.busVoltage > MIN_BUS_VOLTAGE)) {
-        tractiveCoreData.tractive.prechargeState = PRECHARGE_DONE;
-      }
+        // ensure voltages are above correct values
+        if ((tractiveCoreData.tractive.rinehartVoltage >= (tractiveCoreData.orion.busVoltage * PRECHARGE_FLOOR)) &&
+        (tractiveCoreData.orion.busVoltage > MIN_BUS_VOLTAGE)) {
+          tractiveCoreData.tractive.prechargeState = PRECHARGE_DONE;
+        }
 
-    break;
+      break;
 
 
-    // precharge complete!
-    case PRECHARGE_DONE:
+      // precharge complete!
+      case PRECHARGE_DONE:
 
-      // set ready to drive state
-      tractiveCoreData.tractive.readyToDrive = true;
+        // set ready to drive state
+        tractiveCoreData.tractive.readyToDrive = true;
 
-      // if rinehart voltage drops below battery, something's wrong, 
-      if (tractiveCoreData.tractive.rinehartVoltage < MIN_BUS_VOLTAGE) {
+        // if rinehart voltage drops below battery, something's wrong, 
+        if (tractiveCoreData.tractive.rinehartVoltage < MIN_BUS_VOLTAGE) {
+          tractiveCoreData.tractive.prechargeState = PRECHARGE_ERROR;
+        }
+
+      break;
+
+
+      // error state
+      case PRECHARGE_ERROR:
+
+        // ensure car cannot drive
+        tractiveCoreData.tractive.readyToDrive = false;
+        tractiveCoreData.tractive.commandedTorque = 0;
+
+        // reset precharge cycle
+        tractiveCoreData.tractive.prechargeState = PRECHARGE_OFF;
+
+      break;
+      
+
+      // handle undefined behavior
+      default:
+
+        // if we've entered an undefined state, go to error mode
         tractiveCoreData.tractive.prechargeState = PRECHARGE_ERROR;
-      }
 
-    break;
+      break;
+    }
 
-
-    // error state
-    case PRECHARGE_ERROR:
-
-      // ensure car cannot drive
-      tractiveCoreData.tractive.readyToDrive = false;
-      tractiveCoreData.tractive.commandedTorque = 0;
-
-      // reset precharge cycle
-      tractiveCoreData.tractive.prechargeState = PRECHARGE_OFF;
-
-    break;
-    
-
-    // handle undefined behavior
-    default:
-
-      // if we've entered an undefined state, go to error mode
-      tractiveCoreData.tractive.prechargeState = PRECHARGE_ERROR;
-
-    break;
+    // debugging 
+    if (debugger.debugEnabled) {
+      debugger.prechargeState = tractiveCoreData.tractive.prechargeState;
+      debugger.prechargeTaskCount++;
+    }
   }
-
-  // debugging 
-  if (debugger.debugEnabled) {
-    debugger.prechargeState = tractiveCoreData.tractive.prechargeState;
-    debugger.prechargeTaskCount++;
-  }
-
-  // end task
-  vTaskDelete(NULL);
 }
 
 
