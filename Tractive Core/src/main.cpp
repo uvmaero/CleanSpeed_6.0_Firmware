@@ -66,6 +66,8 @@
 // tasks & timers
 #define TASK_STACK_SIZE                 4096        // in bytes
 #define TWAI_BLOCK_DELAY                10          // time to block to complete function call in FreeRTOS ticks (milliseconds)
+#define TASK_HIGH_PRIORITY              16          // max is 32 but its all relative so we don't need to use 32
+#define TASK_MEDIUM_PRIORITY            8           // see above
 
 // debug
 #define ENABLE_DEBUG                    true       // master debug message control
@@ -251,7 +253,7 @@ void SerialTask(void* pvParameters);
 // helpers
 void GetCommandedTorque();
 uint16_t CalculateThrottleResponse(uint16_t value);
-uint16_t TractionControl();
+uint16_t TractionControl(uint16_t value);
 
 // ISRs
 void FrontWheelSpeedISR();
@@ -405,8 +407,8 @@ void IOUpdateCallback()
   static uint8_t ucParameterToPassWrite;
 
   // queue tasks 
-  xTaskCreatePinnedToCore(IOReadTask, "Read-IO", TASK_STACK_SIZE, &ucParameterToPassRead, tskIDLE_PRIORITY, &xHandleIORead, 0);     // pinned to core 0
-  xTaskCreatePinnedToCore(IOWriteTask, "Write-IO", TASK_STACK_SIZE, &ucParameterToPassWrite, tskIDLE_PRIORITY, &xHandleIOWrite, 0); // pinned to core 0
+  xTaskCreatePinnedToCore(IOReadTask, "Read-IO", TASK_STACK_SIZE, &ucParameterToPassRead, TASK_HIGH_PRIORITY, &xHandleIORead, 0);     // pinned to core 0
+  xTaskCreatePinnedToCore(IOWriteTask, "Write-IO", TASK_STACK_SIZE, &ucParameterToPassWrite, TASK_HIGH_PRIORITY, &xHandleIOWrite, 0); // pinned to core 0
 
   // kill task if it returns an error
   if (xHandleIORead != NULL) {
@@ -436,8 +438,8 @@ void TWAIUpdateCallback()
   static uint8_t ucParameterToPassWrite;
 
   // queue tasks 
-  xTaskCreatePinnedToCore(TWAIReadTask, "Read-TWAI", TASK_STACK_SIZE, &ucParameterToPassRead, tskIDLE_PRIORITY, &xHandleTWAIRead, 1);     // pinned to core 1
-  xTaskCreatePinnedToCore(TWAIWriteTask, "Write-TWAI", TASK_STACK_SIZE, &ucParameterToPassWrite, tskIDLE_PRIORITY, &xHandleTWAIWrite, 1); // pinned to core 1
+  xTaskCreatePinnedToCore(TWAIReadTask, "Read-TWAI", TASK_STACK_SIZE, &ucParameterToPassRead, TASK_HIGH_PRIORITY, &xHandleTWAIRead, 1);     // pinned to core 1
+  xTaskCreatePinnedToCore(TWAIWriteTask, "Write-TWAI", TASK_STACK_SIZE, &ucParameterToPassWrite, TASK_HIGH_PRIORITY, &xHandleTWAIWrite, 1); // pinned to core 1
 
   // kill task if it returns an error
   if (xHandleTWAIRead != NULL) {
@@ -465,7 +467,7 @@ void PrechargeCallback()
   static uint8_t ucParameterToPass;
 
   // queue task
-  xTaskCreate(PrechargeTask, "Precharge-Update", TASK_STACK_SIZE, &ucParameterToPass, tskIDLE_PRIORITY, &xHandlePrecharge);
+  xTaskCreate(PrechargeTask, "Precharge-Update", TASK_STACK_SIZE, &ucParameterToPass, TASK_MEDIUM_PRIORITY, &xHandlePrecharge);
 
   // kill task if it returns an error
   if (xHandlePrecharge != NULL) {
@@ -489,7 +491,7 @@ void SerialCallback()
   static uint8_t ucParameterToPass;
 
   // queue task
-  xTaskCreate(SerialTask, "Serial-Task", TASK_STACK_SIZE, &ucParameterToPass, tskIDLE_PRIORITY, &xHandleSerial);
+  xTaskCreate(SerialTask, "Serial-Task", TASK_STACK_SIZE, &ucParameterToPass, TASK_MEDIUM_PRIORITY, &xHandleSerial);
 
   // kill task if it returns an error
   if (xHandleSerial != NULL) {
@@ -1067,7 +1069,7 @@ void PrechargeTask(void* pvParameters)
 
 
 /**
- * send messages to telemetry core 
+ * send data to telemetry core 
 */
 void SerialTask(void* pvParameters) 
 {
@@ -1092,7 +1094,7 @@ void SerialTask(void* pvParameters)
 void loop()
 {
   // everything is managed by RTOS, so nothing really happens here!
-  vTaskDelay(MAIN_LOOP_DELAY);    // prevent watchdog from getting upset
+  vTaskDelay(MAIN_LOOP_DELAY);    // prevent watchdog from getting upset & for debugging, limit print refresh rate
 
   // debugging
   if (debugger.debugEnabled) {
@@ -1106,22 +1108,25 @@ void loop()
  */
 void GetCommandedTorque()
 {
+  // inits
+  uint16_t commandedTorque;
+
   // get the pedal average
-  int pedalAverage = (tractiveCoreData.inputs.pedal0 + tractiveCoreData.inputs.pedal1) / 2;
+  uint16_t pedalAverage = (tractiveCoreData.inputs.pedal0 + tractiveCoreData.inputs.pedal1) / 2;
 
   // drive mode logic (values are 10x because that is the format for Rinehart)
   switch (tractiveCoreData.tractive.driveMode)
   {
     case SLOW:  // runs at 50% power
-      tractiveCoreData.tractive.commandedTorque = map(pedalAverage, PEDAL_MIN, PEDAL_MAX, 0, (MAX_TORQUE * 10) * 0.50);
+      commandedTorque = map(pedalAverage, PEDAL_MIN, PEDAL_MAX, 0, (MAX_TORQUE * 10) * 0.50);
     break;
 
     case ECO:   // runs at 75% power
-      tractiveCoreData.tractive.commandedTorque = map(pedalAverage, PEDAL_MIN, PEDAL_MAX, 0, (MAX_TORQUE * 10) * 0.75);
+      commandedTorque = map(pedalAverage, PEDAL_MIN, PEDAL_MAX, 0, (MAX_TORQUE * 10) * 0.75);
     break;
 
     case FAST:  // runs at 100% power
-      tractiveCoreData.tractive.commandedTorque = map(pedalAverage, PEDAL_MIN, PEDAL_MAX, 0, (MAX_TORQUE * 10));
+      commandedTorque = map(pedalAverage, PEDAL_MIN, PEDAL_MAX, 0, (MAX_TORQUE * 10));
     break;
     
     // error state, set the mode to ECO
@@ -1130,14 +1135,14 @@ void GetCommandedTorque()
       tractiveCoreData.tractive.driveMode = ECO;
 
       // we don't want to send a torque command if we were in an undefined state
-      tractiveCoreData.tractive.commandedTorque = 0;
+      commandedTorque = 0;
     break;
   }
 
 
   // --- traction control --- //
   if (tractiveCoreData.tractive.tractionControlEnable) {
-    tractiveCoreData.tractive.commandedTorque = TractionControl();
+    commandedTorque = TractionControl(commandedTorque);
   }
 
 
@@ -1151,29 +1156,32 @@ void GetCommandedTorque()
   // pedal difference 
   int pedalDifference = tractiveCoreData.inputs.pedal0 - tractiveCoreData.inputs.pedal1;
   if (_abs(pedalDifference) > (PEDAL_MAX * 0.15)) {
-    tractiveCoreData.tractive.commandedTorque = 0;
+    commandedTorque = 0;
   }
   
   // buffer overflow / too much torque somehow
-  if ((tractiveCoreData.tractive.commandedTorque > (MAX_TORQUE * 10)) || (tractiveCoreData.tractive.commandedTorque < 0)) {
-    tractiveCoreData.tractive.commandedTorque = 0;
+  if ((commandedTorque > (MAX_TORQUE * 10)) || (commandedTorque < 0)) {
+    commandedTorque = 0;
   }
 
   // if brake is engaged
   if (tractiveCoreData.outputs.brakeLightEnable) {
-    tractiveCoreData.tractive.commandedTorque = 0;
+    commandedTorque = 0;
   }
 
   // check if ready to drive
   if (!tractiveCoreData.tractive.readyToDrive) {
-    tractiveCoreData.tractive.commandedTorque = 0;      // if not ready to drive then block all torque
+    commandedTorque = 0;                            // if not ready to drive then block all torque
   }
+
+
+  // --- finalize commanded torque --- //
+  tractiveCoreData.tractive.commandedTorque = commandedTorque;
 } 
 
 
 /**
  * @brief calculate throttle response of pedal
- * 
  * @param value the raw pedal value
  * @return uint16_t the commanded torque value
  */
@@ -1224,8 +1232,10 @@ uint16_t CalculateThrottleResponse(uint16_t value)
 
 /**
  * @brief traction control
+ * @param commanded torque
+ * @return a traction controlled commanded torque
 */
-uint16_t TractionControl() {
+uint16_t TractionControl(uint16_t commandedTorque) {
   // inits
   float rearWheelSpeedRatio = 0.0f;
   float averageRearWheelSpeed = 0.0f;
@@ -1275,7 +1285,7 @@ uint16_t TractionControl() {
   }
 
   // calculate an adjusted commanded torque
-  return (uint16_t)(tractiveCoreData.tractive.commandedTorque * tractiveCoreData.tractive.tractionControlModifier);
+  return (uint16_t)(commandedTorque * tractiveCoreData.tractive.tractionControlModifier);
 }
 
 
