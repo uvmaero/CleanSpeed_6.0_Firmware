@@ -1,14 +1,13 @@
 /**
  * @file main.cpp
- * @author dominic gasperini
+ * @author dom gasperini
  * @brief tractive core
- * @version 1.0
- * @date 2023-05-04
- * 
- * @copyright Copyright (c) 2023
+ * @version 1.1
+ * @date 2024-01-10
  * 
  * @ref https://espressif-docs.readthedocs-hosted.com/projects/arduino-esp32/en/latest/libraries.html#apis (api and hal docs)
  * @ref https://docs.espressif.com/projects/esp-idf/en/latest/esp32s3/_images/ESP32-S3_DevKitC-1_pinlayout.jpg (pinout & overview)
+ * @ref https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/system/freertos_idf.html (FreeRTOS for ESP32 docs)
  */
 
 
@@ -20,9 +19,6 @@
 
 
 #include <Arduino.h>
-#include <esp_now.h>
-#include <WiFi.h>
-#include <esp_wifi.h>
 #include "driver/twai.h"
 #include "rtc.h"
 #include "rtc_clk_common.h"
@@ -89,7 +85,6 @@
 
 /**
  * @brief debugger structure used for organizing debug information
- * 
  */
 Debugger debugger = {
   // debug toggle
@@ -127,7 +122,6 @@ Debugger debugger = {
 
 /**
  * @brief the dataframe that describes the entire state of the car
- * 
  */
 TractiveCoreData tractiveCoreData = {
   // tractive data
@@ -224,6 +218,7 @@ TaskHandle_t xHandleTWAIRead = NULL;
 TaskHandle_t xHandleTWAIWrite = NULL;
 
 TaskHandle_t xHandlePrecharge = NULL;
+TaskHandle_t xHandleSerial = NULL;
 
 
 // TWAI
@@ -243,6 +238,7 @@ static const twai_filter_config_t can_filter_config = TWAI_FILTER_CONFIG_ACCEPT_
 void IOUpdateCallback();
 void TWAIUpdateCallback();
 void PrechargeCallback();
+void SerialCallback();
 
 // tasks
 void IOReadTask(void* pvParameters);
@@ -250,6 +246,7 @@ void IOWriteTask(void* pvParameters);
 void TWAIReadTask(void* pvParameters);
 void TWAIWriteTask(void* pvParameters);
 void PrechargeTask(void* pvParameters);
+void SerialTask(void* pvParameters);
 
 // helpers
 void GetCommandedTorque();
@@ -363,6 +360,7 @@ void setup() {
   IOUpdateCallback();
   TWAIUpdateCallback();
   PrechargeCallback();
+  SerialCallback();
 
   // scheduler status
   if (xTaskGetSchedulerState() == 2) {
@@ -391,7 +389,6 @@ void setup() {
 
 /**
  * @brief callback function for queueing I/O read and write tasks
- * 
  * @param args arguments to be passed to the task
  */
 void IOUpdateCallback() 
@@ -423,7 +420,6 @@ void IOUpdateCallback()
 
 /**
  * @brief callback function for queueing TWAI read and write tasks
- * 
  * @param args arguments to be passed to the task
  */
 void TWAIUpdateCallback() 
@@ -455,7 +451,6 @@ void TWAIUpdateCallback()
 
 /**
  * @brief callback function to create a new Precharge task 
- * 
  */
 void PrechargeCallback() 
 {
@@ -470,6 +465,30 @@ void PrechargeCallback()
   // kill task if it returns an error
   if (xHandlePrecharge != NULL) {
     vTaskDelete(xHandlePrecharge);
+  }
+
+  portEXIT_CRITICAL_ISR(&timerMux);
+
+  return;
+}
+
+
+/**
+ * @brief callback function to create a new Serial task
+*/
+void SerialCallback()
+{
+  portENTER_CRITICAL_ISR(&timerMux);
+
+  // inits
+  static uint8_t ucParameterToPass;
+
+  // queue task
+  xTaskCreate(SerialTask, "Serial-Task", TASK_STACK_SIZE, &ucParameterToPass, tskIDLE_PRIORITY, &xHandleSerial);
+
+  // kill task if it returns an error
+  if (xHandleSerial != NULL) {
+    vTaskDelete(xHandleSerial);
   }
 
   portEXIT_CRITICAL_ISR(&timerMux);
@@ -587,7 +606,6 @@ void BLWheelSpeedISR()
 
 /**
  * @brief reads I/O
- * 
  * @param pvParameters parameters passed to task
  */
 void IOReadTask(void* pvParameters)
@@ -700,7 +718,6 @@ void IOReadTask(void* pvParameters)
 
 /**
  * @brief writes I/O
- * 
  * @param pvParameters parameters passed to task
  */
 void IOWriteTask(void* pvParameters)
@@ -779,7 +796,6 @@ void IOWriteTask(void* pvParameters)
 
 /**
  * @brief reads TWAI bus
- * 
  * @param pvParameters parameters passed to task
  */
 void TWAIReadTask(void* pvParameters)
@@ -846,7 +862,6 @@ void TWAIReadTask(void* pvParameters)
 
 /**
  * @brief writes to TWAI bus
- * 
  * @param pvParameters parameters passed to task
  */
 void TWAIWriteTask(void* pvParameters)
@@ -966,7 +981,6 @@ void TWAIWriteTask(void* pvParameters)
 
 /**
  * @brief run precharge
- * 
  * @param pvParameters 
  */
 void PrechargeTask(void* pvParameters)
@@ -1052,6 +1066,19 @@ void PrechargeTask(void* pvParameters)
 }
 
 
+/**
+ * send messages to telemetry core 
+*/
+void SerialTask(void* pvParameters) 
+{
+  for (;;) 
+  {
+    // write tractive core data to serial bus
+    Serial.write((uint8_t *) &tractiveCoreData, sizeof(tractiveCoreData));
+  }
+}
+
+
 /*
 ===============================================================================================
                                     Main Loop
@@ -1060,8 +1087,7 @@ void PrechargeTask(void* pvParameters)
 
 
 /**
- * @brief 
- * 
+ * @brief main loop!
  */
 void loop()
 {
@@ -1262,7 +1288,6 @@ uint16_t TractionControl() {
 
 /**
  * @brief some nice in-depth debugging for TWAI
- * 
  */
 void PrintTWAIDebug() {
   Serial.printf("\n--- START TWAI DEBUG ---\n\n");
@@ -1320,7 +1345,6 @@ void PrintTWAIDebug() {
 
 /**
  * @brief some nice in-depth debugging for I/O
- * 
  */
 void PrintIODebug() {
   Serial.printf("\n--- START I/O DEBUG ---\n");
@@ -1359,8 +1383,7 @@ void PrintIODebug() {
 
 
 /**
- * @brief manages toggle-able debug settings
- * 
+ * @brief manages toggle-able debug settings & scheduler debugging 
  */
 void PrintDebug() {
   // CAN
