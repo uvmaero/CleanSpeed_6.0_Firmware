@@ -35,7 +35,6 @@
 #define IO_READ_INTERVAL                200000      // 0.1 seconds in microseconds
 #define SERIAL_UPDATE_INTERVAL          250000      // 0.25 seconds in microseconds
 #define TASK_STACK_SIZE                 4096        // in bytes
-#define TWAI_BLOCK_DELAY                100         // time to block to complete function call in FreeRTOS ticks (milliseconds)
 
 // debug
 #define ENABLE_DEBUG                    true       // master debug message control
@@ -223,10 +222,14 @@ TelemetryCoreData telemetryCoreData = {
 };
 
 
+
+// RTOS Tasks
+TaskHandle_t xHandleIORead = NULL;
+TaskHandle_t xHandleReadSerial = NULL;
+TaskHandle_t xHandleWriteSerial = NULL;
+
+
 // Hardware Timers
-hw_timer_t *timer1 = NULL;
-hw_timer_t *timer2 = NULL;
-hw_timer_t *timer3 = NULL;
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 
 
@@ -333,32 +336,13 @@ void setup() {
 
   // -------------------------- initialize IMU -------------------------------- //
 
-  // -------------------------------------------------------------------------- //
-
-
-  // ---------------------- initialize timer interrupts ----------------------- //
-  // timer 1 - I/O Update
-  timer1 = timerBegin(0, 80, true);
-  timerAttachInterrupt(timer1, &IOReadCallback, true);
-  timerAlarmWrite(timer1, IO_READ_INTERVAL, true);
-
-  // timer 2 - Serial Update
-  timer2 = timerBegin(1, 80, true);
-  timerAttachInterrupt(timer1, &SerialUpdateCallback, true);
-  timerAlarmWrite(timer1, SERIAL_UPDATE_INTERVAL, true);
-
-  // start timers
-  if (setup.ioActive)
-    timerAlarmEnable(timer1);
-  if (setup.lora || (setup.gpsActive || setup.imuActive)) 
-    timerAlarmEnable(timer2);
-
-  // ----------------------------------------------------------------------------------------- //
+  // -------------------------------------------------------------------------- /
 
 
   // ------------------------------- Scheduler & Task Status --------------------------------- //
-  Serial.printf("I/O UPDATE STATUS: %s\n", timerAlarmEnabled(timer1) ? "RUNNING" : "DISABLED");
-  Serial.printf("SERIAL UPDATE STATUS: %s\n", timerAlarmEnabled(timer2) ? "RUNNING" : "DISABLED");
+  // start tasks
+  IOReadCallback();
+  SerialUpdateCallback();
 
   // scheduler status
   if (xTaskGetSchedulerState() == 2) {
@@ -396,10 +380,14 @@ void IOReadCallback()
 
   // inits 
   static uint8_t ucParameterToPass;
-  TaskHandle_t xHandle = NULL;
 
   // queue task
-  xTaskCreate(IOReadTask, "Read-IO", TASK_STACK_SIZE, &ucParameterToPass, tskIDLE_PRIORITY, &xHandle);
+  xTaskCreate(IOReadTask, "Read-IO", TASK_STACK_SIZE, &ucParameterToPass, tskIDLE_PRIORITY, &xHandleIORead);
+
+  // kill task if error returned
+  if (xHandleIORead != NULL) {
+    vTaskDelete(xHandleIORead);
+  }
   
   portEXIT_CRITICAL_ISR(&timerMux);
 
@@ -417,14 +405,19 @@ void SerialUpdateCallback() {
 
   // inits
   static uint8_t ucParameterToPassRead;
-  TaskHandle_t xHandleRead = NULL;
-
   static uint8_t ucParameterToPassWrite;
-  TaskHandle_t xHandleWrite = NULL;
 
   // queue tasks
-  xTaskCreate(SerialReadTask, "Read-Serial", TASK_STACK_SIZE, &ucParameterToPassRead, tskIDLE_PRIORITY, &xHandleRead);
-  xTaskCreate(SerialWriteTask, "Write-Serial", TASK_STACK_SIZE, &ucParameterToPassWrite, tskIDLE_PRIORITY, &xHandleWrite);
+  xTaskCreate(SerialReadTask, "Read-Serial", TASK_STACK_SIZE, &ucParameterToPassRead, tskIDLE_PRIORITY, &xHandleReadSerial);
+  xTaskCreate(SerialWriteTask, "Write-Serial", TASK_STACK_SIZE, &ucParameterToPassWrite, tskIDLE_PRIORITY, &xHandleWriteSerial);
+
+  // kill tasks if error is returned
+  if (xHandleReadSerial != NULL) {
+    vTaskDelete(xHandleReadSerial);
+  }
+  if (xHandleWriteSerial != NULL) {
+    vTaskDelete(xHandleWriteSerial);
+  }
 
   portEXIT_CRITICAL_ISR(&timerMux);
 
@@ -446,23 +439,23 @@ void SerialUpdateCallback() {
  */
 void IOReadTask(void* pvParameters)
 {
-  // dampers
+  for (;;) 
+  {
+    // dampers
 
-  // tire temps
+    // tire temps
 
-  // strain gauges
+    // strain gauges
 
-  // steering
+    // steering
 
 
-  // debugging
-  if (debugger.debugEnabled) {
-    debugger.IO_data = telemetryCoreData;
-    debugger.ioReadTaskCount++;
+    // debugging
+    if (debugger.debugEnabled) {
+      debugger.IO_data = telemetryCoreData;
+      debugger.ioReadTaskCount++;
+    }
   }
-
-  // end task
-  vTaskDelete(NULL);
 }
 
 
@@ -472,17 +465,16 @@ void IOReadTask(void* pvParameters)
  * @param pvParameters parameters passed to task
  */
 void SerialReadTask(void* pvParameters) {
-  // tractive core data
+  for (;;) 
+  {
+    // tractive core data
 
 
-  // GPS
+    // GPS
 
 
-  // IMU
-
-
-  // end task
-  vTaskDelete(NULL);
+    // IMU
+  }
 }
 
 
@@ -492,11 +484,13 @@ void SerialReadTask(void* pvParameters) {
  * @param pvParameters parameters passed to task
  */
 void SerialWriteTask(void* pvParameters) {
-  // LoRa update
+  for (;;) 
+  {  
+    // LoRa update
 
 
-  // HUD update
-
+    // HUD update
+  }
 
   // end task
   vTaskDelete(NULL);
