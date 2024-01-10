@@ -332,8 +332,8 @@ void setup() {
   // -------------------------------------------------------------------------- //
 
 
-  // --------------------- initialize CAN Controller -------------------------- //
-  // install CAN driver
+  // --------------------- initialize TWAI Controller -------------------------- //
+  // install TWAI driver
   if(twai_driver_install(&can_general_config, &can_timing_config, &can_filter_config) == ESP_OK) {
     Serial.printf("TWAI DRIVER INSTALL [ SUCCESS ]\n");
 
@@ -361,6 +361,11 @@ void setup() {
   TWAIUpdateCallback();
   PrechargeCallback();
   SerialCallback();
+
+  // tasks status
+  Serial.printf("\nTask Setup Status:\n");
+  Serial.printf("I/O TASK SETUP: %s\n", setup.ioActive ? "RUNNING" : "DISABLED");
+  Serial.printf("TWAI TASK SETUP: %s\n", setup.twaiActive ? "RUNNING" : "DISABLED");
 
   // scheduler status
   if (xTaskGetSchedulerState() == 2) {
@@ -804,7 +809,6 @@ void TWAIReadTask(void* pvParameters)
     // inits
     twai_message_t incomingMessage;
     uint8_t tmp1, tmp2;
-    int id;
 
     // if rx queue is full clear it (this is bad, implement twai message filtering)
     uint32_t alerts;
@@ -815,7 +819,7 @@ void TWAIReadTask(void* pvParameters)
 
     // check for new messages in the CAN buffer
     if (twai_receive(&incomingMessage, pdMS_TO_TICKS(TWAI_BLOCK_DELAY)) == ESP_OK) { // if there are messages to be read
-      id = incomingMessage.identifier;
+      int id = incomingMessage.identifier;
       
       // parse out data
       switch (id) {
@@ -989,7 +993,6 @@ void PrechargeTask(void* pvParameters)
   {
     // inits
     twai_message_t outgoingMessage;
-    int result;
 
     // precharge state machine
     switch (tractiveCoreData.tractive.prechargeState) {
