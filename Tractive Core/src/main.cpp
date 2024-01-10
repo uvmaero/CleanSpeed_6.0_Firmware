@@ -2,7 +2,7 @@
  * @file main.cpp
  * @author dom gasperini
  * @brief tractive core
- * @version 1.1
+ * @version 1.01
  * @date 2024-01-10
  * 
  * @ref https://espressif-docs.readthedocs-hosted.com/projects/arduino-esp32/en/latest/libraries.html#apis (api and hal docs)
