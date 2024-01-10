@@ -26,6 +26,7 @@
 #include "driver/twai.h"
 #include "rtc.h"
 #include "rtc_clk_common.h"
+#include "vector"
 
 #include <data_types.h>
 #include <pin_config.h>
@@ -208,11 +209,18 @@ TractiveCoreData tractiveCoreData = {
 };
 
 
-// Hardware Timers
-hw_timer_t *timer1 = NULL;
-hw_timer_t *timer2 = NULL;
-hw_timer_t *timer3 = NULL;
+// Hardware Timer
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
+
+
+// RTOS Task Handles
+TaskHandle_t xHandleIORead = NULL;
+TaskHandle_t xHandleIOWrite = NULL;
+
+TaskHandle_t xHandleTWAIRead = NULL;
+TaskHandle_t xHandleTWAIWrite = NULL;
+
+TaskHandle_t xHandlePrecharge = NULL;
 
 
 // TWAI
@@ -347,38 +355,11 @@ void setup() {
   }
   // --------------------------------------------------------------------------- //
 
-
-  // ---------------------- initialize timer interrupts --------------------- //
-  // timer 1 - Sensor Update
-  timer1 = timerBegin(0, 80, true);
-  timerAttachInterrupt(timer1, &IOUpdateCallback, true);
-  timerAlarmWrite(timer1, IO_UPDATE_INTERVAL, true);
-
-  // timer 2 - TWAI Update
-  timer2 = timerBegin(1, 80, true);
-  timerAttachInterrupt(timer2, &TWAIUpdateCallback, true);
-  timerAlarmWrite(timer2, TWAI_UPDATE_INTERVAL, true);
-
-  // timer 3 - precharge 
-  timer3 = timerBegin(2, 80, true);
-  timerAttachInterrupt(timer2, &PrechargeCallback, true);
-  timerAlarmWrite(timer2, PRECHARGE_UPDATE_INTERVAL, true);
-
-  // start timers
-  if (setup.ioActive) {
-    timerAlarmEnable(timer1);   // io
-    timerAlarmEnable(timer3);   // precharge
-  }
-  if (setup.twaiActive) {
-    timerAlarmEnable(timer2);   // twai
-  }
-  // ----------------------------------------------------------------------------------------- //
-
-
   // ------------------------------- Scheduler & Task Status --------------------------------- //
-  Serial.printf("I/O UPDATE STATUS: %s\n", timerAlarmEnabled(timer1) ? "RUNNING" : "DISABLED");
-  Serial.printf("TWAI UPDATE STATUS: %s\n", timerAlarmEnabled(timer2) ? "RUNNING" : "DISABLED");
-  Serial.printf("PRECHARGE UPDATE STATUS: %s\n", timerAlarmEnabled(timer3) ? "RUNNING" : "DISABLED");
+  // start tasks
+  IOUpdateCallback();
+  TWAIUpdateCallback();
+  PrechargeCallback();
 
   // scheduler status
   if (xTaskGetSchedulerState() == 2) {
@@ -414,17 +395,24 @@ void IOUpdateCallback()
 {
   portENTER_CRITICAL_ISR(&timerMux);
 
-  // inits 
+  // inits
   static uint8_t ucParameterToPassRead;
-  TaskHandle_t xHandleRead = NULL;
-
   static uint8_t ucParameterToPassWrite;
-  TaskHandle_t xHandleWrite = NULL;
+
 
   // queue tasks 
-  xTaskCreate(IOReadTask, "Read-IO", TASK_STACK_SIZE, &ucParameterToPassRead, tskIDLE_PRIORITY, &xHandleRead);
-  xTaskCreate(IOWriteTask, "Write-IO", TASK_STACK_SIZE, &ucParameterToPassWrite, tskIDLE_PRIORITY, &xHandleWrite);
+  xTaskCreatePinnedToCore(IOReadTask, "Read-IO", TASK_STACK_SIZE, &ucParameterToPassRead, tskIDLE_PRIORITY, &xHandleIORead, 0);     // pinned to core 0
+  xTaskCreatePinnedToCore(IOWriteTask, "Write-IO", TASK_STACK_SIZE, &ucParameterToPassWrite, tskIDLE_PRIORITY, &xHandleIOWrite, 0); // pinned to core 0
+
+  // kill task if it returns an error
+  if (xHandleIORead != NULL) {
+     vTaskDelete(xHandleIORead);
+  }
   
+  if (xHandleIOWrite != NULL) {
+     vTaskDelete(xHandleIOWrite);
+  }
+
   portEXIT_CRITICAL_ISR(&timerMux);
 
   return;
@@ -442,14 +430,20 @@ void TWAIUpdateCallback()
 
   // inits
   static uint8_t ucParameterToPassRead;
-  TaskHandle_t xHandleRead = NULL;
-
   static uint8_t ucParameterToPassWrite;
-  TaskHandle_t xHandleWrite = NULL;
 
   // queue tasks 
-  xTaskCreate(TWAIReadTask, "Read-TWAI", TASK_STACK_SIZE, &ucParameterToPassRead, tskIDLE_PRIORITY, &xHandleRead);
-  xTaskCreate(TWAIWriteTask, "Write-TWAI", TASK_STACK_SIZE, &ucParameterToPassWrite, tskIDLE_PRIORITY, &xHandleWrite);
+  xTaskCreatePinnedToCore(TWAIReadTask, "Read-TWAI", TASK_STACK_SIZE, &ucParameterToPassRead, tskIDLE_PRIORITY, &xHandleTWAIRead, 1);     // pinned to core 1
+  xTaskCreatePinnedToCore(TWAIWriteTask, "Write-TWAI", TASK_STACK_SIZE, &ucParameterToPassWrite, tskIDLE_PRIORITY, &xHandleTWAIWrite, 1); // pinned to core 1
+
+  // kill task if it returns an error
+  if (xHandleTWAIRead != NULL) {
+     vTaskDelete(xHandleTWAIRead);
+  }
+  
+  if (xHandleTWAIWrite != NULL) {
+     vTaskDelete(xHandleTWAIWrite);
+  }
 
   portEXIT_CRITICAL_ISR(&timerMux);
   
@@ -467,11 +461,15 @@ void PrechargeCallback()
   
   // inits
   static uint8_t ucParameterToPass;
-  TaskHandle_t xHandle = NULL;
 
   // queue task
-  xTaskCreate(PrechargeTask, "Precharge-Update", TASK_STACK_SIZE, &ucParameterToPass, tskIDLE_PRIORITY, &xHandle);
-  
+  xTaskCreate(PrechargeTask, "Precharge-Update", TASK_STACK_SIZE, &ucParameterToPass, tskIDLE_PRIORITY, &xHandlePrecharge);
+
+  // kill task if it returns an error
+  if (xHandlePrecharge != NULL) {
+     vTaskDelete(xHandlePrecharge);
+  }
+
   portEXIT_CRITICAL_ISR(&timerMux);
 
   return;
@@ -1380,7 +1378,47 @@ void PrintDebug() {
 
   // Scheduler
   if (debugger.scheduler_debugEnable) {
-    Serial.printf("read io: %d | write io: %d | read twai: %d | write twai: %d\n", debugger.ioReadTaskCount, debugger.ioWriteTaskCount, 
-    debugger.twaiReadTaskCount, debugger.twaiWriteTaskCount);
+    // inits
+    std::vector<eTaskState> taskStates;
+    std::vector<std::string> taskStatesStrings;
+
+    // gather task information
+    taskStates.push_back(eTaskGetState(xHandleIORead));
+    taskStates.push_back(eTaskGetState(xHandleIOWrite));
+    taskStates.push_back(eTaskGetState(xHandleTWAIRead));
+    taskStates.push_back(eTaskGetState(xHandleTWAIWrite));
+    taskStates.push_back(eTaskGetState(xHandlePrecharge));
+
+    // make it usable
+    for (int i = 0; i < taskStates.size() - 1; ++i) {
+      switch (taskStates.at(i))
+      {
+      case eReady:
+        taskStatesStrings.push_back("RUNNING");        
+      break;
+
+      case eBlocked:
+        taskStatesStrings.push_back("BLOCKED");        
+      break;
+
+      case eSuspended:
+        taskStatesStrings.push_back("SUSPENDED");        
+      break;
+
+      case eDeleted:
+        taskStatesStrings.push_back("DELETED");        
+      break;
+      
+      default:
+        taskStatesStrings.push_back("ERROR");        
+        break;
+      }
+    }
+
+
+    // print
+    Serial.printf("read io:[%s](%d) | write io:[%s](%d) | read twai:[%s](%d) | write twai:[%s](%d) | precharge:[%s](%d) \r", 
+      taskStatesStrings.at(0), debugger.ioReadTaskCount, taskStatesStrings.at(1), debugger.ioWriteTaskCount, taskStatesStrings.at(2), 
+      debugger.twaiReadTaskCount, taskStatesStrings.at(3), debugger.twaiWriteTaskCount, taskStatesStrings.at(4), debugger.prechargeTaskCount);
   }
 }
