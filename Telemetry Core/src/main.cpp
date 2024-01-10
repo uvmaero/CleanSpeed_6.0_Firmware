@@ -147,7 +147,6 @@ TelemetryCoreData telemetryCoreData = {
       .fansEnable = false,
 
       .buzzerEnable = false,
-      .buzzerCounter = 0,
     },
 
     // orion

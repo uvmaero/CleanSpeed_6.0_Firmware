@@ -110,7 +110,6 @@ typedef struct TractiveCoreData
         bool fansEnable;
 
         bool buzzerEnable;
-        int buzzerCounter;
     } outputs;
 
     struct Orion
@@ -161,6 +160,12 @@ typedef struct Debugger
     int twaiReadTaskCount;
     int twaiWriteTaskCount;
     int prechargeTaskCount;
+
+    int ioReadTaskPreviousCount;
+    int ioWriteTaskPreviousCount;
+    int twaiReadTaskPreviousCount;
+    int twaiWriteTaskPreviousCount;
+    int prechargeTaskPreviousCount;
 } Debugger;
 
 

@@ -56,6 +56,7 @@
 #define COOLING_ENABLE_THRESHOLD        30          // in degrees C 
 #define COOLING_DISABLE_THRESHOLD       25          // in degrees C
 #define PRECHARGE_FLOOR                 0.8         // precentage of bus voltage rinehart should be at
+#define BUZZER_DURATION                 2000        // in milliseconds
 
 // TWAI
 #define RINE_MOTOR_INFO_ADDR            0x0A5       // get motor information from Rinehart 
@@ -67,11 +68,8 @@
 #define BMS_CELL_DATA_ADDR              0x6B2       // cell data
 
 // tasks & timers
-#define IO_UPDATE_INTERVAL              25000       // 0.025 seconds in microseconds (40Hz)
-#define TWAI_UPDATE_INTERVAL            25000       // 0.025 seconds in microseconds (40Hz)
-#define PRECHARGE_UPDATE_INTERVAL       250000      // 0.25 seconds in microseconds  (4Hz)
 #define TASK_STACK_SIZE                 4096        // in bytes
-#define TWAI_BLOCK_DELAY                100         // time to block to complete function call in FreeRTOS ticks (milliseconds)
+#define TWAI_BLOCK_DELAY                10          // time to block to complete function call in FreeRTOS ticks (milliseconds)
 
 // debug
 #define ENABLE_DEBUG                    true       // master debug message control
@@ -118,6 +116,12 @@ Debugger debugger = {
   .twaiReadTaskCount = 0,
   .twaiWriteTaskCount = 0,
   .prechargeTaskCount = 0,
+
+  .ioReadTaskPreviousCount = 0,
+  .ioWriteTaskPreviousCount = 0,
+  .twaiReadTaskPreviousCount = 0,
+  .twaiWriteTaskPreviousCount = 0,
+  .prechargeTaskPreviousCount = 0,
 };
 
 
@@ -190,7 +194,6 @@ TractiveCoreData tractiveCoreData = {
     .fansEnable = false,
 
     .buzzerEnable = false,
-    .buzzerCounter = 0,
   },
 
   // orion
@@ -399,18 +402,17 @@ void IOUpdateCallback()
   static uint8_t ucParameterToPassRead;
   static uint8_t ucParameterToPassWrite;
 
-
   // queue tasks 
   xTaskCreatePinnedToCore(IOReadTask, "Read-IO", TASK_STACK_SIZE, &ucParameterToPassRead, tskIDLE_PRIORITY, &xHandleIORead, 0);     // pinned to core 0
   xTaskCreatePinnedToCore(IOWriteTask, "Write-IO", TASK_STACK_SIZE, &ucParameterToPassWrite, tskIDLE_PRIORITY, &xHandleIOWrite, 0); // pinned to core 0
 
   // kill task if it returns an error
   if (xHandleIORead != NULL) {
-     vTaskDelete(xHandleIORead);
+    vTaskDelete(xHandleIORead);
   }
   
   if (xHandleIOWrite != NULL) {
-     vTaskDelete(xHandleIOWrite);
+    vTaskDelete(xHandleIOWrite);
   }
 
   portEXIT_CRITICAL_ISR(&timerMux);
@@ -438,11 +440,11 @@ void TWAIUpdateCallback()
 
   // kill task if it returns an error
   if (xHandleTWAIRead != NULL) {
-     vTaskDelete(xHandleTWAIRead);
+    vTaskDelete(xHandleTWAIRead);
   }
   
   if (xHandleTWAIWrite != NULL) {
-     vTaskDelete(xHandleTWAIWrite);
+    vTaskDelete(xHandleTWAIWrite);
   }
 
   portEXIT_CRITICAL_ISR(&timerMux);
@@ -467,7 +469,7 @@ void PrechargeCallback()
 
   // kill task if it returns an error
   if (xHandlePrecharge != NULL) {
-     vTaskDelete(xHandlePrecharge);
+    vTaskDelete(xHandlePrecharge);
   }
 
   portEXIT_CRITICAL_ISR(&timerMux);
@@ -723,18 +725,13 @@ void IOWriteTask(void* pvParameters)
 
     // buzzer
     if (tractiveCoreData.outputs.buzzerEnable) {
+      // buzz buzzer
       digitalWrite(BUZZER_PIN, HIGH);
-      tractiveCoreData.outputs.buzzerCounter++;
+      vTaskDelay(BUZZER_DURATION);
+      digitalWrite(BUZZER_PIN, LOW);
 
-      if (tractiveCoreData.outputs.buzzerCounter >= (2 * (IO_UPDATE_INTERVAL / 10000)))    // convert to activations per second and multiply by 2
-      {
-        // update buzzer state and turn off the buzzer
-        tractiveCoreData.outputs.buzzerEnable = false;
-        tractiveCoreData.outputs.buzzerCounter = 0;                        // reset buzzer count
-        digitalWrite(BUZZER_PIN, LOW);
-
-        tractiveCoreData.tractive.enableInverter = true;                   // enable the inverter
-      }
+      tractiveCoreData.outputs.buzzerEnable = false;
+      tractiveCoreData.tractive.enableInverter = true;      // enable the inverter
     }
 
     // fault leds
@@ -1381,6 +1378,7 @@ void PrintDebug() {
     // inits
     std::vector<eTaskState> taskStates;
     std::vector<std::string> taskStatesStrings;
+    std::vector<float> taskRefreshRate;
 
     // gather task information
     taskStates.push_back(eTaskGetState(xHandleIORead));
@@ -1388,6 +1386,12 @@ void PrintDebug() {
     taskStates.push_back(eTaskGetState(xHandleTWAIRead));
     taskStates.push_back(eTaskGetState(xHandleTWAIWrite));
     taskStates.push_back(eTaskGetState(xHandlePrecharge));
+
+    taskRefreshRate.push_back((debugger.ioReadTaskCount - debugger.ioReadTaskPreviousCount) / MAIN_LOOP_DELAY);
+    taskRefreshRate.push_back((debugger.ioWriteTaskCount - debugger.ioWriteTaskPreviousCount) / MAIN_LOOP_DELAY);
+    taskRefreshRate.push_back((debugger.twaiReadTaskCount - debugger.twaiReadTaskPreviousCount) / MAIN_LOOP_DELAY);
+    taskRefreshRate.push_back((debugger.twaiWriteTaskCount - debugger.twaiWriteTaskPreviousCount) / MAIN_LOOP_DELAY);
+    taskRefreshRate.push_back((debugger.prechargeTaskCount - debugger.prechargeTaskPreviousCount) / MAIN_LOOP_DELAY);
 
     // make it usable
     for (int i = 0; i < taskStates.size() - 1; ++i) {
@@ -1415,10 +1419,16 @@ void PrintDebug() {
       }
     }
 
-
     // print
-    Serial.printf("read io:[%s](%d) | write io:[%s](%d) | read twai:[%s](%d) | write twai:[%s](%d) | precharge:[%s](%d) \r", 
-      taskStatesStrings.at(0), debugger.ioReadTaskCount, taskStatesStrings.at(1), debugger.ioWriteTaskCount, taskStatesStrings.at(2), 
-      debugger.twaiReadTaskCount, taskStatesStrings.at(3), debugger.twaiWriteTaskCount, taskStatesStrings.at(4), debugger.prechargeTaskCount);
+    Serial.printf("read io:[%s](%d)<%f.1Hz> | write io:[%s](%d)<%f.1Hz> | read twai:[%s](%d)<%f.1Hz> | write twai:[%s](%d)<%f.1Hz> | precharge:[%s](%d)<%f.1Hz> \r", 
+      taskStatesStrings.at(0), debugger.ioReadTaskCount, taskRefreshRate.at(0), taskStatesStrings.at(1), debugger.ioWriteTaskCount, taskRefreshRate.at(1), taskStatesStrings.at(2), 
+      debugger.twaiReadTaskCount, taskRefreshRate.at(2), taskStatesStrings.at(3), debugger.twaiWriteTaskCount, taskRefreshRate.at(3), taskStatesStrings.at(4), debugger.prechargeTaskCount, taskRefreshRate.at(4));
+
+    // update counters
+    debugger.ioReadTaskPreviousCount = debugger.ioReadTaskCount;
+    debugger.ioWriteTaskPreviousCount = debugger.ioWriteTaskCount;
+    debugger.twaiReadTaskPreviousCount = debugger.twaiReadTaskCount;
+    debugger.twaiWriteTaskPreviousCount = debugger.twaiWriteTaskCount;
+    debugger.prechargeTaskPreviousCount = debugger.prechargeTaskCount;
   }
 }

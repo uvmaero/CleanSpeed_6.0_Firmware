@@ -110,7 +110,6 @@ typedef struct TractiveCoreData
         bool fansEnable;
 
         bool buzzerEnable;
-        int buzzerCounter;
     } outputs;
 
     struct Orion
