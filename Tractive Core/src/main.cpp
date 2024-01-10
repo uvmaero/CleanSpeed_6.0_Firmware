@@ -872,9 +872,6 @@ void TWAIWriteTask(void* pvParameters)
 {
   for (;;)
   {
-    // inits
-    bool sentStatus = false;
-
     // tractive system control message
     twai_message_t rinehartMessage;
     rinehartMessage.identifier = RINE_MOTOR_CONTROL_ADDR;
