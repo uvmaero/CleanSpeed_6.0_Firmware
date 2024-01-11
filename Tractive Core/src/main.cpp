@@ -359,16 +359,20 @@ void setup() {
   // --------------------------------------------------------------------------- //
 
   // ------------------------------- Scheduler & Task Status --------------------------------- //
-  // start tasks
-  IOUpdateCallback();
-  TWAIUpdateCallback();
-  PrechargeCallback();
-  SerialCallback();
-
   // task setup status
   Serial.printf("\nTask Setup Status:\n");
-  Serial.printf("I/O TASK SETUP: %s\n", setup.ioActive ? "RUNNING" : "DISABLED");
-  Serial.printf("TWAI TASK SETUP: %s\n", setup.twaiActive ? "RUNNING" : "DISABLED");
+  Serial.printf("I/O TASK SETUP: %s\n", setup.ioActive ? "COMPLETE" : "FAILED");
+  Serial.printf("TWAI TASK SETUP: %s\n", setup.twaiActive ? "COMPLETE" : "FAILED");
+  
+  // start tasks
+  if (setup.ioActive) {
+    IOUpdateCallback();
+  }
+  if (setup.twaiActive) {
+    TWAIUpdateCallback();
+  }
+  PrechargeCallback();
+  SerialCallback();
 
   // task status
   Serial.printf("\nTask Status:\n");
@@ -972,9 +976,6 @@ void PrechargeTask(void* pvParameters)
 {
   for (;;)
   {
-    // inits
-    twai_message_t outgoingMessage;
-
     // precharge state machine
     switch (tractiveCoreData.tractive.prechargeState) {
 
@@ -1059,6 +1060,9 @@ void SerialTask(void* pvParameters)
   {
     // write tractive core data to serial bus
     Serial.write((uint8_t *) &tractiveCoreData, sizeof(tractiveCoreData));
+
+    // debugging
+    // TODO: write this
   }
 }
 
@@ -1347,6 +1351,8 @@ void PrintTWAIDebug() {
  */
 void PrintIODebug() {
   Serial.printf("\n--- START I/O DEBUG ---\n");
+
+  // TODO: write/fix this
 
   // // INPUTS
   // // pedal 0 & 1
