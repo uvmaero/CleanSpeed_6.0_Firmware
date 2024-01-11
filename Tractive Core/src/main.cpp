@@ -41,32 +41,47 @@
 #define TRAC_CON_MAX_MOD                0.75        // maximum power reduction percentage that traction control can apply
 #define TRAC_CON_MOD_STEP               0.02        // the step in which each iteration of traction control modified the throttle response
 #define TRAC_CON_STEP_INCREASE_MOD      3           // the decrease in traction control management as a mutliple of the increasing step          
+
 #define TIRE_DIAMETER                   20.0        // diameter of the vehicle's tires in inches
 #define WHEEL_RPM_CALC_THRESHOLD        20          // the number of times the hall effect sensor is tripped before calculating vehicle speed
+
 #define BRAKE_LIGHT_THRESHOLD           50          // the threshold that must be crossed for the brake to be considered active
+
 #define PEDAL_MIN                       0           // minimum value the pedals can read as
 #define PEDAL_MAX                       255         // maximum value a pedal can read as
 #define PEDAL_DEADBAND                  15          // ~5% of PEDAL_MAX
+
 #define MAX_TORQUE                      225         // MAX TORQUE RINEHART CAN ACCEPT, DO NOT EXCEED 230!!!
 #define MAX_REVERSE_TORQUE              25          // for limiting speed while in reverse
+
 #define MIN_BUS_VOLTAGE                 150         // min bus voltage
+
 #define COOLING_ENABLE_THRESHOLD        35          // in degrees C 
 #define COOLING_DISABLE_THRESHOLD       30          // in degrees C
+
 #define PRECHARGE_FLOOR                 0.8         // precentage of bus voltage rinehart should be at
 #define BUZZER_DURATION                 2000        // in milliseconds
 
 // TWAI
+#define TELEMETRY_TRACTIVE_1_ADDR       0x001
+#define TELEMETRY_TRACTIVE_2_ADDR       0x002
+#define TELEMETRY_SENSOR_ADDR           0x003       // telemetry board sensor data send address
+#define TELEMETRY_INPUTS_ADDR           0x004
+#define TELEMETRY_OUTPUTS_ADDR          0x005
+
 #define RINE_MOTOR_INFO_ADDR            0x0A5       // get motor information from Rinehart 
 #define RINE_VOLT_INFO_ADDR             0x0A7       // get rinehart electrical information
 #define RINE_BUS_INFO_ADDR              0x0AA       // get rinehart relay information 
 #define RINE_MOTOR_CONTROL_ADDR         0x0C0       // motor command address 
 #define RINE_BUS_CONTROL_ADDR           0x0C1       // control rinehart relay states
+
 #define BMS_GEN_DATA_ADDR               0x6B0       // important BMS data
 #define BMS_CELL_DATA_ADDR              0x6B2       // cell data
 
-// tasks & timers
-#define TASK_STACK_SIZE                 4096        // in bytes
+// tasks
 #define TWAI_BLOCK_DELAY                10          // time to block to complete function call in FreeRTOS ticks (milliseconds)
+
+#define TASK_STACK_SIZE                 4096        // in bytes
 #define TASK_HIGH_PRIORITY              16          // max is 32 but its all relative so we don't need to use 32
 #define TASK_MEDIUM_PRIORITY            8           // see above
 
@@ -184,8 +199,6 @@ TractiveCoreData tractiveCoreData = {
   .outputs = {
     .vicoreEnable = false,
 
-    .driveModeLED = ECO,
-
     .brakeLightEnable = false,
 
     .fansEnable = false,
@@ -253,6 +266,8 @@ void PrechargeTask(void* pvParameters);
 void GetCommandedTorque();
 uint16_t CalculateThrottleResponse(uint16_t value);
 uint16_t TractionControl(uint16_t value);
+short DriveModeToNumber();
+short PrechargeStateToNumber();
 
 // ISRs
 void FrontWheelSpeedISR();
@@ -926,8 +941,86 @@ void TWAIWriteTask(void* pvParameters)
     // queue rinehart message for transmission
     esp_err_t prechargeCtrlMessageResult = twai_transmit(&prechargeCtrlMessage, pdMS_TO_TICKS(TWAI_BLOCK_DELAY));
 
+    // --- telemetry board messages --- // 
+    // telemetry tractive 1 message
+    twai_message_t telemetryTractive1Message;
+    telemetryTractive1Message.identifier = TELEMETRY_TRACTIVE_1_ADDR;
+    telemetryTractive1Message.flags = TWAI_MSG_FLAG_NONE;
+    telemetryTractive1Message.data_length_code = 8;
 
-    // TODO: add message send to telemetry board!!!
+    telemetryTractive1Message.data[0] = tractiveCoreData.tractive.readyToDrive;
+    telemetryTractive1Message.data[1] = tractiveCoreData.tractive.enableInverter;
+    telemetryTractive1Message.data[2] = tractiveCoreData.tractive.rinehartVoltage;
+    telemetryTractive1Message.data[3] = tractiveCoreData.tractive.commandedTorque;
+    telemetryTractive1Message.data[4] = tractiveCoreData.tractive.driveDirection;
+    telemetryTractive1Message.data[5] = tractiveCoreData.tractive.tractionControlEnable;
+    telemetryTractive1Message.data[6] = tractiveCoreData.tractive.tractionControlModifier;
+    telemetryTractive1Message.data[7] = tractiveCoreData.tractive.currentSpeed;
+    esp_err_t telemetryTractive1MessageResult = twai_transmit(&telemetryTractive1Message, pdMS_TO_TICKS(TWAI_BLOCK_DELAY));
+
+    // telemetry tractive 2 message
+    twai_message_t telemetryTractive2Message;
+    telemetryTractive2Message.identifier = TELEMETRY_TRACTIVE_1_ADDR;
+    telemetryTractive2Message.flags = TWAI_MSG_FLAG_NONE;
+    telemetryTractive2Message.data_length_code = 8;
+
+    telemetryTractive2Message.data[0] = tractiveCoreData.tractive.coastRegen;
+    telemetryTractive2Message.data[1] = tractiveCoreData.tractive.brakeRegen;
+    telemetryTractive2Message.data[2] = PrechargeStateToNumber();             // need to covert state to usable value
+    telemetryTractive2Message.data[3] = DriveModeToNumber();                  // need to covert state to usable value
+    telemetryTractive2Message.data[4] = 0x00;
+    telemetryTractive2Message.data[5] = 0x00;
+    telemetryTractive2Message.data[6] = 0x00;
+    telemetryTractive2Message.data[7] = 0x00;
+    esp_err_t telemetryTractive2MessageResult = twai_transmit(&telemetryTractive2Message, pdMS_TO_TICKS(TWAI_BLOCK_DELAY));
+
+    // telemetry sensors message
+    twai_message_t telemetrySensorMessage;
+    telemetrySensorMessage.identifier = TELEMETRY_TRACTIVE_1_ADDR;
+    telemetrySensorMessage.flags = TWAI_MSG_FLAG_NONE;
+    telemetrySensorMessage.data_length_code = 8;
+
+    telemetrySensorMessage.data[0] = tractiveCoreData.sensors.imdFault;
+    telemetrySensorMessage.data[1] = tractiveCoreData.sensors.bmsFault;
+    telemetrySensorMessage.data[2] = tractiveCoreData.sensors.vicoreFault;
+    telemetrySensorMessage.data[3] = tractiveCoreData.sensors.coolingTempIn;
+    telemetrySensorMessage.data[4] = tractiveCoreData.sensors.coolingTempOut;
+    telemetrySensorMessage.data[5] = tractiveCoreData.sensors.frontWheelsSpeed;
+    telemetrySensorMessage.data[6] = tractiveCoreData.sensors.brWheelSpeed;
+    telemetrySensorMessage.data[7] = tractiveCoreData.sensors.blWheelSpeed;
+    esp_err_t telemetrySensorMessageResult = twai_transmit(&telemetrySensorMessage, pdMS_TO_TICKS(TWAI_BLOCK_DELAY));
+
+    // telemetry inputs message
+    twai_message_t telemetryInputsMessage;
+    telemetryInputsMessage.identifier = TELEMETRY_TRACTIVE_1_ADDR;
+    telemetryInputsMessage.flags = TWAI_MSG_FLAG_NONE;
+    telemetryInputsMessage.data_length_code = 8;
+
+    telemetryInputsMessage.data[0] = tractiveCoreData.inputs.pedal0;
+    telemetryInputsMessage.data[1] = tractiveCoreData.inputs.pedal1;
+    telemetryInputsMessage.data[2] = tractiveCoreData.inputs.frontBrake;
+    telemetryInputsMessage.data[3] = tractiveCoreData.inputs.rearBrake;
+    telemetryInputsMessage.data[4] = 0x00;
+    telemetryInputsMessage.data[5] = 0x00;
+    telemetryInputsMessage.data[6] = 0x00;
+    telemetryInputsMessage.data[7] = 0x00;
+    esp_err_t telemetryInputsMessageMessageResult = twai_transmit(&telemetryInputsMessage, pdMS_TO_TICKS(TWAI_BLOCK_DELAY));
+
+    // telemetry outputs message
+    twai_message_t telemetryOutputsMessage;
+    telemetryOutputsMessage.identifier = TELEMETRY_TRACTIVE_1_ADDR;
+    telemetryOutputsMessage.flags = TWAI_MSG_FLAG_NONE;
+    telemetryOutputsMessage.data_length_code = 8;
+
+    telemetryOutputsMessage.data[0] = tractiveCoreData.outputs.vicoreEnable;
+    telemetryOutputsMessage.data[1] = tractiveCoreData.outputs.brakeLightEnable;
+    telemetryOutputsMessage.data[2] = tractiveCoreData.outputs.fansEnable;
+    telemetryOutputsMessage.data[3] = tractiveCoreData.outputs.buzzerEnable;
+    telemetryOutputsMessage.data[4] = 0x00;
+    telemetryOutputsMessage.data[5] = 0x00;
+    telemetryOutputsMessage.data[6] = 0x00;
+    telemetryOutputsMessage.data[7] = 0x00;
+    esp_err_t telemetryOutputsMessageMessageResult = twai_transmit(&telemetryInputsMessage, pdMS_TO_TICKS(TWAI_BLOCK_DELAY));
 
 
     // debugging
@@ -1060,6 +1153,13 @@ void loop()
     PrintDebug();
   }
 }
+
+
+/*
+===============================================================================================
+                                    Helper Functions 
+===============================================================================================
+*/
 
 
 /**
@@ -1252,6 +1352,55 @@ uint16_t TractionControl(uint16_t commandedTorque) {
 
   // calculate an adjusted commanded torque
   return (uint16_t)(commandedTorque * tractiveCoreData.tractive.tractionControlModifier);
+}
+
+
+/**
+ * 
+*/
+short DriveModeToNumber() 
+{
+  // inits
+  short number;
+
+  // convert
+  if (tractiveCoreData.tractive.driveMode == SLOW) {
+    number = 1;
+  }
+  if (tractiveCoreData.tractive.driveMode == ECO) {
+    number = 2;
+  }
+  if (tractiveCoreData.tractive.driveMode == FAST) {
+    number = 3;
+  }
+
+  return number;
+}
+
+
+/**
+ * 
+*/
+short PrechargeStateToNumber() 
+{
+  // inits
+  short number;
+
+  // convert
+  if (tractiveCoreData.tractive.prechargeState == PRECHARGE_OFF) {
+    number = 1;
+  }
+  if (tractiveCoreData.tractive.prechargeState == PRECHARGE_ON) {
+    number = 2;
+  }
+  if (tractiveCoreData.tractive.prechargeState == PRECHARGE_DONE) {
+    number = 3;
+  }
+  if (tractiveCoreData.tractive.prechargeState == PRECHARGE_ERROR) {
+    number = 4;
+  }
+
+  return number;
 }
 
 

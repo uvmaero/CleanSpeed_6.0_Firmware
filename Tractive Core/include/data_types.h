@@ -103,8 +103,6 @@ typedef struct TractiveCoreData
     {
         bool vicoreEnable;
 
-        DriveMode driveModeLED;
-
         bool brakeLightEnable;
 
         bool fansEnable;
