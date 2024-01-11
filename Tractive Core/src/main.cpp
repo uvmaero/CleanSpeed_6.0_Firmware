@@ -365,10 +365,19 @@ void setup() {
   PrechargeCallback();
   SerialCallback();
 
-  // tasks status
+  // task setup status
   Serial.printf("\nTask Setup Status:\n");
   Serial.printf("I/O TASK SETUP: %s\n", setup.ioActive ? "RUNNING" : "DISABLED");
   Serial.printf("TWAI TASK SETUP: %s\n", setup.twaiActive ? "RUNNING" : "DISABLED");
+
+  // task status
+  Serial.printf("\nTask Status:\n");
+  Serial.printf("I/O READ TASK STATUS: %s\n", eTaskGetState(xHandleIORead) == eRunning ? "RUNNING" : "ERROR");
+  Serial.printf("I/O WRITE TASK STATUS: %s\n", eTaskGetState(xHandleIOWrite) == eRunning ? "RUNNING" : "ERROR");
+  Serial.printf("TWAI READ TASK STATUS: %s\n", eTaskGetState(xHandleTWAIRead) == eRunning ? "RUNNING" : "ERROR");
+  Serial.printf("TWAI WRITE TASK STATUS: %s\n", eTaskGetState(xHandleTWAIWrite) == eRunning ? "RUNNING" : "ERROR");
+  Serial.printf("PRECHARGE TASK STATUS: %s\n", eTaskGetState(xHandlePrecharge) == eRunning ? "RUNNING" : "ERROR");
+  Serial.printf("SERIAL TASK STATUS: %s\n", eTaskGetState(xHandleSerial) == eRunning ? "RUNNING" : "ERROR");
 
   // scheduler status
   if (xTaskGetSchedulerState() == 2) {
