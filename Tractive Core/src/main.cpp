@@ -48,6 +48,7 @@
 #define PEDAL_MAX                       255         // maximum value a pedal can read as
 #define PEDAL_DEADBAND                  15          // ~5% of PEDAL_MAX
 #define MAX_TORQUE                      225         // MAX TORQUE RINEHART CAN ACCEPT, DO NOT EXCEED 230!!!
+#define MAX_REVERSE_TORQUE              25          // for limiting speed while in reverse
 #define MIN_BUS_VOLTAGE                 150         // min bus voltage
 #define COOLING_ENABLE_THRESHOLD        30          // in degrees C 
 #define COOLING_DISABLE_THRESHOLD       25          // in degrees C
@@ -136,7 +137,7 @@ TractiveCoreData tractiveCoreData = {
     .rinehartVoltage = 0.0f,
     .commandedTorque = 0,
 
-    .driveDirection = false,    // forward is false | reverse is true (we run backwards)
+    .driveDirection = false,    // forward = false | reverse = true (we run backwards)
     .driveMode = ECO,
     
     .currentSpeed = 0.0f,
@@ -1147,6 +1148,13 @@ void GetCommandedTorque()
 
 
   // --- safety checks --- //
+
+  // driving in reverse
+  if (tractiveCoreData.tractive.driveDirection == true) {   // forward = false | reverse = true
+    if (commandedTorque >= MAX_REVERSE_TORQUE) {
+      commandedTorque = MAX_REVERSE_TORQUE;
+    }
+  }
 
   // rinehart voltage check
   if (tractiveCoreData.tractive.rinehartVoltage < MIN_BUS_VOLTAGE) {
