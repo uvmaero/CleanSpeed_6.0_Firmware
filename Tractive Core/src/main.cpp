@@ -50,8 +50,8 @@
 #define MAX_TORQUE                      225         // MAX TORQUE RINEHART CAN ACCEPT, DO NOT EXCEED 230!!!
 #define MAX_REVERSE_TORQUE              25          // for limiting speed while in reverse
 #define MIN_BUS_VOLTAGE                 150         // min bus voltage
-#define COOLING_ENABLE_THRESHOLD        30          // in degrees C 
-#define COOLING_DISABLE_THRESHOLD       25          // in degrees C
+#define COOLING_ENABLE_THRESHOLD        35          // in degrees C 
+#define COOLING_DISABLE_THRESHOLD       30          // in degrees C
 #define PRECHARGE_FLOOR                 0.8         // precentage of bus voltage rinehart should be at
 #define BUZZER_DURATION                 2000        // in milliseconds
 
@@ -153,12 +153,10 @@ TractiveCoreData tractiveCoreData = {
   .sensors = {
     .imdFault = true,
     .bmsFault = true,
+    .vicoreFault = false,
 
     .coolingTempIn = 0.0f,
     .coolingTempOut = 0.0f,
-    .vicoreTemp = 0.0f,
-
-    .glvReading = 0.0f,
 
     .frontWheelsSpeed = 0.0f,
     .frontWheelSpeedCount = 0,
@@ -184,6 +182,8 @@ TractiveCoreData tractiveCoreData = {
 
   // outputs
   .outputs = {
+    .vicoreEnable = false,
+
     .driveModeLED = ECO,
 
     .brakeLightEnable = false,
@@ -241,7 +241,6 @@ static const twai_filter_config_t can_filter_config = TWAI_FILTER_CONFIG_ACCEPT_
 void IOUpdateCallback();
 void TWAIUpdateCallback();
 void PrechargeCallback();
-void SerialCallback();
 
 // tasks
 void IOReadTask(void* pvParameters);
@@ -249,7 +248,6 @@ void IOWriteTask(void* pvParameters);
 void TWAIReadTask(void* pvParameters);
 void TWAIWriteTask(void* pvParameters);
 void PrechargeTask(void* pvParameters);
-void SerialTask(void* pvParameters);
 
 // helpers
 void GetCommandedTorque();
@@ -304,6 +302,10 @@ void setup() {
   pinMode(START_BUTTON_PIN, INPUT_PULLUP);
   pinMode(DRIVE_MODE_BUTTON_PIN, INPUT_PULLUP);
 
+  pinMode(IMD_FAULT_PIN, INPUT);
+  pinMode(BMS_FAULT_PIN, INPUT);
+  pinMode(VICORE_FAULT_PIN, INPUT);
+
   pinMode(TRACTION_CONTROL_SWITCH_PIN, INPUT);
 
   pinMode(FR_HALL_EFFECT_PIN, INPUT);
@@ -317,12 +319,11 @@ void setup() {
   attachInterrupt(BL_HALL_EFFECT_PIN, BLWheelSpeedISR, RISING);
 
   // outputs
+  pinMode(VICORE_ENABLE_PIN, OUTPUT);
   pinMode(RTD_LED_PIN, OUTPUT);
   pinMode(DRIVE_MODE_LED_PIN, OUTPUT);
   pinMode(BMS_FAULT_LED_PIN, OUTPUT);
   pinMode(IMD_FAULT_LED_PIN, OUTPUT);
-  pinMode(FANS_ACTIVE_LED_PIN, OUTPUT);
-  pinMode(PUMP_ACTIVE_LED_PIN, OUTPUT);
 
   pinMode(FAN_ENABLE_PIN, OUTPUT);
 
@@ -372,7 +373,6 @@ void setup() {
     TWAIUpdateCallback();
   }
   PrechargeCallback();
-  SerialCallback();
 
   // task status
   Serial.printf("\nTask Status:\n");
@@ -381,7 +381,6 @@ void setup() {
   Serial.printf("TWAI READ TASK STATUS: %s\n", eTaskGetState(xHandleTWAIRead) == eRunning ? "RUNNING" : "ERROR");
   Serial.printf("TWAI WRITE TASK STATUS: %s\n", eTaskGetState(xHandleTWAIWrite) == eRunning ? "RUNNING" : "ERROR");
   Serial.printf("PRECHARGE TASK STATUS: %s\n", eTaskGetState(xHandlePrecharge) == eRunning ? "RUNNING" : "ERROR");
-  Serial.printf("SERIAL TASK STATUS: %s\n", eTaskGetState(xHandleSerial) == eRunning ? "RUNNING" : "ERROR");
 
   // scheduler status
   if (xTaskGetSchedulerState() == 2) {
@@ -464,25 +463,6 @@ void PrechargeCallback()
 
   // queue task
   xTaskCreate(PrechargeTask, "Precharge-Update", TASK_STACK_SIZE, &ucParameterToPass, TASK_MEDIUM_PRIORITY, &xHandlePrecharge);
-
-  portEXIT_CRITICAL_ISR(&timerMux);
-
-  return;
-}
-
-
-/**
- * @brief callback function to create a new Serial task
-*/
-void SerialCallback()
-{
-  portENTER_CRITICAL_ISR(&timerMux);
-
-  // inits
-  static uint8_t ucParameterToPass;
-
-  // queue task
-  xTaskCreate(SerialTask, "Serial-Task", TASK_STACK_SIZE, &ucParameterToPass, TASK_MEDIUM_PRIORITY, &xHandleSerial);
 
   portEXIT_CRITICAL_ISR(&timerMux);
 
@@ -686,6 +666,13 @@ void IOReadTask(void* pvParameters)
       tractiveCoreData.sensors.imdFault = true;
     }
 
+    if (digitalRead(VICORE_FAULT_PIN) == LOW) {
+      tractiveCoreData.sensors.vicoreFault = false;
+    }
+    else {
+      tractiveCoreData.sensors.vicoreFault = true;
+    }
+
     // cooling 
     int tmpCoolingIn = analogReadMilliVolts(COOLING_IN_TEMP_PIN);
     tractiveCoreData.sensors.coolingTempIn = map(tmpCoolingIn, 0, 2500, 0, 100);      // find thermistor values via testing 
@@ -725,7 +712,7 @@ void IOWriteTask(void* pvParameters)
       digitalWrite(BRAKE_LIGHT_PIN, LOW);
     }
 
-    // cooling
+    // fans
     if (tractiveCoreData.outputs.fansEnable) {
       digitalWrite(FAN_ENABLE_PIN, HIGH);
     }
@@ -761,14 +748,6 @@ void IOWriteTask(void* pvParameters)
 
     // drive mode led
     // TODO: implement this doing some rgb led stuff
-
-    // cooling led
-    if (tractiveCoreData.outputs.fansEnable) {
-      digitalWrite(FANS_ACTIVE_LED_PIN, HIGH);
-    }
-    else {
-      digitalWrite(FANS_ACTIVE_LED_PIN, LOW);
-    }
 
     // ready to drive LED
     if (tractiveCoreData.tractive.readyToDrive) {
@@ -947,6 +926,10 @@ void TWAIWriteTask(void* pvParameters)
     // queue rinehart message for transmission
     esp_err_t prechargeCtrlMessageResult = twai_transmit(&prechargeCtrlMessage, pdMS_TO_TICKS(TWAI_BLOCK_DELAY));
 
+
+    // TODO: add message send to telemetry board!!!
+
+
     // debugging
     if (debugger.debugEnabled) {
       debugger.TWAI_rinehartCtrlResult = rinehartCtrlResult;
@@ -985,6 +968,9 @@ void PrechargeTask(void* pvParameters)
         // set ready to drive state
         tractiveCoreData.tractive.readyToDrive = false;
 
+        // disable vicore
+        tractiveCoreData.outputs.vicoreEnable = false;
+
         if (tractiveCoreData.sensors.imdFault == false && tractiveCoreData.sensors.bmsFault == false) {
           tractiveCoreData.tractive.prechargeState = PRECHARGE_ON;
         }
@@ -1012,6 +998,9 @@ void PrechargeTask(void* pvParameters)
         // set ready to drive state
         tractiveCoreData.tractive.readyToDrive = true;
 
+        // enable vicore
+        tractiveCoreData.outputs.vicoreEnable = true;
+
         // if rinehart voltage drops below battery, something's wrong, 
         if (tractiveCoreData.tractive.rinehartVoltage < MIN_BUS_VOLTAGE) {
           tractiveCoreData.tractive.prechargeState = PRECHARGE_ERROR;
@@ -1024,7 +1013,7 @@ void PrechargeTask(void* pvParameters)
       case PRECHARGE_ERROR:
 
         // ensure car cannot drive
-        tractiveCoreData.tractive.readyToDrive = false;
+        tractiveCoreData.tractive.enableInverter = false;
         tractiveCoreData.tractive.commandedTorque = 0;
 
         // reset precharge cycle
@@ -1047,22 +1036,6 @@ void PrechargeTask(void* pvParameters)
       debugger.prechargeState = tractiveCoreData.tractive.prechargeState;
       debugger.prechargeTaskCount++;
     }
-  }
-}
-
-
-/**
- * send data to telemetry core 
-*/
-void SerialTask(void* pvParameters) 
-{
-  for (;;) 
-  {
-    // write tractive core data to serial bus
-    Serial.write((uint8_t *) &tractiveCoreData, sizeof(tractiveCoreData));
-
-    // debugging
-    // TODO: write this
   }
 }
 

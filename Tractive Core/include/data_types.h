@@ -72,12 +72,10 @@ typedef struct TractiveCoreData
     {
         bool imdFault;
         bool bmsFault;
+        bool vicoreFault;
 
         float coolingTempIn;
         float coolingTempOut;
-        float vicoreTemp;
-
-        float glvReading;
 
         float frontWheelsSpeed;
         int16_t frontWheelSpeedCount;
@@ -103,6 +101,8 @@ typedef struct TractiveCoreData
 
     struct Outputs
     {
+        bool vicoreEnable;
+
         DriveMode driveModeLED;
 
         bool brakeLightEnable;
