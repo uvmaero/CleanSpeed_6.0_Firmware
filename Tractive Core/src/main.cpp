@@ -1419,20 +1419,31 @@ void PrintDebug() {
     // inits
     std::vector<eTaskState> taskStates;
     std::vector<std::string> taskStatesStrings;
-    std::vector<float> taskRefreshRate;
+    std::vector<int> taskRefreshRate;
+    int uptime = esp_rtc_get_time_us() / 1000000;
 
     // gather task information
-    taskStates.push_back(eTaskGetState(xHandleIORead));
-    taskStates.push_back(eTaskGetState(xHandleIOWrite));
-    taskStates.push_back(eTaskGetState(xHandleTWAIRead));
+    if (xHandleIORead != NULL) {
+      taskStates.push_back(eTaskGetState(xHandleIORead));
+    }
+    if (xHandleIOWrite != NULL) {
+      taskStates.push_back(eTaskGetState(xHandleIOWrite));
+    }
+    if (xHandleTWAIRead != NULL) {
+      taskStates.push_back(eTaskGetState(xHandleTWAIRead));
+    }
+    if (xHandleTWAIWrite != NULL) {
     taskStates.push_back(eTaskGetState(xHandleTWAIWrite));
-    taskStates.push_back(eTaskGetState(xHandlePrecharge));
+    }
+    if (xHandlePrecharge != NULL) {
+      taskStates.push_back(eTaskGetState(xHandlePrecharge));
+    }
 
-    taskRefreshRate.push_back((debugger.ioReadTaskCount - debugger.ioReadTaskPreviousCount) / MAIN_LOOP_DELAY);
-    taskRefreshRate.push_back((debugger.ioWriteTaskCount - debugger.ioWriteTaskPreviousCount) / MAIN_LOOP_DELAY);
-    taskRefreshRate.push_back((debugger.twaiReadTaskCount - debugger.twaiReadTaskPreviousCount) / MAIN_LOOP_DELAY);
-    taskRefreshRate.push_back((debugger.twaiWriteTaskCount - debugger.twaiWriteTaskPreviousCount) / MAIN_LOOP_DELAY);
-    taskRefreshRate.push_back((debugger.prechargeTaskCount - debugger.prechargeTaskPreviousCount) / MAIN_LOOP_DELAY);
+    taskRefreshRate.push_back(debugger.ioReadTaskCount - debugger.ioReadTaskPreviousCount);
+    taskRefreshRate.push_back(debugger.ioWriteTaskCount - debugger.ioWriteTaskPreviousCount);
+    taskRefreshRate.push_back(debugger.twaiReadTaskCount - debugger.twaiReadTaskPreviousCount);
+    taskRefreshRate.push_back(debugger.twaiWriteTaskCount - debugger.twaiWriteTaskPreviousCount);
+    taskRefreshRate.push_back(debugger.prechargeTaskCount - debugger.prechargeTaskPreviousCount);
 
     // make it usable
     for (int i = 0; i < taskStates.size() - 1; ++i) {
@@ -1461,9 +1472,13 @@ void PrintDebug() {
     }
 
     // print
-    Serial.printf("read io:[%s](%d)<%f.1Hz> | write io:[%s](%d)<%f.1Hz> | read twai:[%s](%d)<%f.1Hz> | write twai:[%s](%d)<%f.1Hz> | precharge:[%s](%d)<%f.1Hz> \r", 
-      taskStatesStrings.at(0), debugger.ioReadTaskCount, taskRefreshRate.at(0), taskStatesStrings.at(1), debugger.ioWriteTaskCount, taskRefreshRate.at(1), taskStatesStrings.at(2), 
-      debugger.twaiReadTaskCount, taskRefreshRate.at(2), taskStatesStrings.at(3), debugger.twaiWriteTaskCount, taskRefreshRate.at(3), taskStatesStrings.at(4), debugger.prechargeTaskCount, taskRefreshRate.at(4));
+    // Serial.printf("read io:[%s](%d)<%d Hz> | write io:[%s](%d)<%d Hz> | read twai:[%s](%d)<%d Hz> | write twai:[%s](%d)<%d Hz> | precharge:[%s](%d)<%d Hz> \r", 
+    //   taskStatesStrings.at(0), debugger.ioReadTaskCount, taskRefreshRate.at(0), taskStatesStrings.at(1), debugger.ioWriteTaskCount, taskRefreshRate.at(1), taskStatesStrings.at(2), 
+    //   debugger.twaiReadTaskCount, taskRefreshRate.at(2), taskStatesStrings.at(3), debugger.twaiWriteTaskCount, taskRefreshRate.at(3), taskStatesStrings.at(4), debugger.prechargeTaskCount, taskRefreshRate.at(4));
+
+    Serial.printf("uptime: %d | read io:<%d Hz> (%d) | write io:<%d Hz> (%d) | read twai:<%d Hz> (%d) | write twai:<%d Hz> (%d) | precharge:<%d Hz> (%d) \r",
+      uptime, debugger.ioReadTaskCount, taskRefreshRate.at(0), debugger.ioWriteTaskCount, taskRefreshRate.at(1),
+      debugger.twaiReadTaskCount, taskRefreshRate.at(2), debugger.twaiWriteTaskCount, taskRefreshRate.at(3),  debugger.prechargeTaskCount, taskRefreshRate.at(4));
 
     // update counters
     debugger.ioReadTaskPreviousCount = debugger.ioReadTaskCount;
