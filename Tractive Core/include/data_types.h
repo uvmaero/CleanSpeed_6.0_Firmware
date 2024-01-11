@@ -2,16 +2,29 @@
  * @file dataTypes.h
  * @author Dominic Gasperini
  * @brief all of the unique data types used to manage the state of the car
- * @version 1.0
- * @date 2023-05-04
+ * @version 1.1
+ * @date 2024-01-11
  * 
  * @copyright Copyright (c) 2023
  * 
  */
 
 
-// includes
+/*
+===============================================================================================
+                                    Includes 
+===============================================================================================
+*/
+
+
 #include <esp_err.h>
+
+
+/*
+===============================================================================================
+                                    Data Types
+===============================================================================================
+*/
 
 
 /**
@@ -143,6 +156,11 @@ typedef struct Debugger
     // TWAI data
     esp_err_t TWAI_rinehartCtrlResult;
     esp_err_t TWAI_prechargeCtrlResult;
+    esp_err_t telemetryTractive1MessageResult;
+    esp_err_t telemetryTractive2MessageResult;
+    esp_err_t telemetrySensorMessageResult;
+    esp_err_t telemetryInputsMessageMessageResult;
+    esp_err_t telemetryOutputsMessageMessageResult;
     uint8_t TWAI_rinehartCtrlMessage[8];
     uint8_t TWAI_prechargeCtrlMessage[8];
 

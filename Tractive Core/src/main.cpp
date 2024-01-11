@@ -79,7 +79,7 @@
 #define BMS_CELL_DATA_ADDR              0x6B2       // cell data
 
 // tasks
-#define TWAI_BLOCK_DELAY                10          // time to block to complete function call in FreeRTOS ticks (milliseconds)
+#define TWAI_BLOCK_DELAY                5           // time to block to complete function call in FreeRTOS ticks (milliseconds)
 
 #define TASK_STACK_SIZE                 4096        // in bytes
 #define TASK_HIGH_PRIORITY              16          // max is 32 but its all relative so we don't need to use 32
@@ -114,6 +114,12 @@ Debugger debugger = {
   // TWAI data
   .TWAI_rinehartCtrlResult = ESP_OK,
   .TWAI_prechargeCtrlResult = ESP_OK,
+  .telemetryTractive1MessageResult = ESP_OK,
+  .telemetryTractive2MessageResult = ESP_OK,
+  .telemetrySensorMessageResult = ESP_OK,
+  .telemetryInputsMessageMessageResult = ESP_OK,
+  .telemetryOutputsMessageMessageResult = ESP_OK,
+
   .TWAI_rinehartCtrlMessage = {},
   .TWAI_prechargeCtrlMessage = {},
 
