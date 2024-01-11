@@ -411,15 +411,6 @@ void IOUpdateCallback()
   xTaskCreatePinnedToCore(IOReadTask, "Read-IO", TASK_STACK_SIZE, &ucParameterToPassRead, TASK_HIGH_PRIORITY, &xHandleIORead, 0);     // pinned to core 0
   xTaskCreatePinnedToCore(IOWriteTask, "Write-IO", TASK_STACK_SIZE, &ucParameterToPassWrite, TASK_HIGH_PRIORITY, &xHandleIOWrite, 0); // pinned to core 0
 
-  // kill task if it returns an error
-  if (xHandleIORead != NULL) {
-    vTaskDelete(xHandleIORead);
-  }
-  
-  if (xHandleIOWrite != NULL) {
-    vTaskDelete(xHandleIOWrite);
-  }
-
   portEXIT_CRITICAL_ISR(&timerMux);
 
   return;
@@ -442,15 +433,6 @@ void TWAIUpdateCallback()
   xTaskCreatePinnedToCore(TWAIReadTask, "Read-TWAI", TASK_STACK_SIZE, &ucParameterToPassRead, TASK_HIGH_PRIORITY, &xHandleTWAIRead, 1);     // pinned to core 1
   xTaskCreatePinnedToCore(TWAIWriteTask, "Write-TWAI", TASK_STACK_SIZE, &ucParameterToPassWrite, TASK_HIGH_PRIORITY, &xHandleTWAIWrite, 1); // pinned to core 1
 
-  // kill task if it returns an error
-  if (xHandleTWAIRead != NULL) {
-    vTaskDelete(xHandleTWAIRead);
-  }
-  
-  if (xHandleTWAIWrite != NULL) {
-    vTaskDelete(xHandleTWAIWrite);
-  }
-
   portEXIT_CRITICAL_ISR(&timerMux);
   
   return;
@@ -470,11 +452,6 @@ void PrechargeCallback()
   // queue task
   xTaskCreate(PrechargeTask, "Precharge-Update", TASK_STACK_SIZE, &ucParameterToPass, TASK_MEDIUM_PRIORITY, &xHandlePrecharge);
 
-  // kill task if it returns an error
-  if (xHandlePrecharge != NULL) {
-    vTaskDelete(xHandlePrecharge);
-  }
-
   portEXIT_CRITICAL_ISR(&timerMux);
 
   return;
@@ -493,11 +470,6 @@ void SerialCallback()
 
   // queue task
   xTaskCreate(SerialTask, "Serial-Task", TASK_STACK_SIZE, &ucParameterToPass, TASK_MEDIUM_PRIORITY, &xHandleSerial);
-
-  // kill task if it returns an error
-  if (xHandleSerial != NULL) {
-    vTaskDelete(xHandleSerial);
-  }
 
   portEXIT_CRITICAL_ISR(&timerMux);
 
