@@ -21,6 +21,7 @@
 #include "driver/twai.h"
 #include "rtc.h"
 #include "rtc_clk_common.h"
+#include <vector>
 
 #include <data_types.h>
 #include <pin_config.h>
@@ -71,18 +72,22 @@ Debugger debugger = {
   .debugEnabled = ENABLE_DEBUG,
   .serial_debugEnabled = false,
   .IO_debugEnabled = false,
+  .twai_debugEnable = false,
   .scheduler_debugEnable = true,
 
   // I/O data
   .IO_data = {},
 
-  // precharge data
-  .prechargeState = PRECHARGE_OFF,
-
   // scheduler data
   .ioReadTaskCount = 0,
   .serialReadTaskCount = 0,
   .serialWriteTaskCount = 0,
+  .twaiReadTaskCount = 0,
+
+  .ioReadTaskPreviousCount = 0,
+  .serialReadTaskPreviousCount = 0,
+  .serialWriteTaskPreviousCount = 0,
+  .twaiReadTaskPreviousCount = 0,
 };
 
 
@@ -773,6 +778,66 @@ void PrintDebug()
 
   // scheduler
   if (debugger.scheduler_debugEnable) {
-    Serial.printf("read io: %d | read serial: %d | write serial: %d\n", debugger.ioReadTaskCount, debugger.serialReadTaskCount, debugger.serialWriteTaskCount);
+    // inits
+    std::vector<eTaskState> taskStates;
+    std::vector<std::string> taskStatesStrings;
+    std::vector<int> taskRefreshRate;
+    int uptime = esp_rtc_get_time_us() / 1000000;
+
+    // gather task information
+    if (xHandleIORead != NULL) {
+      taskStates.push_back(eTaskGetState(xHandleIORead));
+    }
+    if (xHandleSerialRead != NULL) {
+      taskStates.push_back(eTaskGetState(xHandleSerialRead));
+    }
+    if (xHandleSerialWrite != NULL) {
+    taskStates.push_back(eTaskGetState(xHandleSerialWrite));
+    }
+    if (xHandleTwaiRead != NULL) {
+      taskStates.push_back(eTaskGetState(xHandleTwaiRead));
+    }
+
+    taskRefreshRate.push_back(debugger.ioReadTaskCount - debugger.ioReadTaskPreviousCount);
+    taskRefreshRate.push_back(debugger.serialReadTaskCount - debugger.serialReadTaskPreviousCount);
+    taskRefreshRate.push_back(debugger.serialWriteTaskCount - debugger.serialWriteTaskPreviousCount);
+    taskRefreshRate.push_back(debugger.twaiReadTaskCount - debugger.twaiReadTaskPreviousCount);
+
+    // make it usable
+    for (int i = 0; i < taskStates.size() - 1; ++i) {
+      switch (taskStates.at(i))
+      {
+      case eReady:
+        taskStatesStrings.push_back("RUNNING");        
+      break;
+
+      case eBlocked:
+        taskStatesStrings.push_back("BLOCKED");        
+      break;
+
+      case eSuspended:
+        taskStatesStrings.push_back("SUSPENDED");        
+      break;
+
+      case eDeleted:
+        taskStatesStrings.push_back("DELETED");        
+      break;
+      
+      default:
+        taskStatesStrings.push_back("ERROR");        
+        break;
+      }
+    }
+
+    // print it
+    Serial.printf("uptime: %d | read io:<%d Hz> (%d) | read serial:<%d Hz> (%d) | write serial:<%d Hz> (%d) | read twai:<%d Hz> (%d) \r",
+      uptime, debugger.ioReadTaskCount, taskRefreshRate.at(0), debugger.serialReadTaskCount, taskRefreshRate.at(1),
+      debugger.serialWriteTaskCount, taskRefreshRate.at(2), debugger.twaiReadTaskCount, taskRefreshRate.at(3));
+
+    // update counters
+    debugger.ioReadTaskPreviousCount = debugger.ioReadTaskCount;
+    debugger.twaiReadTaskPreviousCount = debugger.twaiReadTaskCount;
+    debugger.serialReadTaskPreviousCount = debugger.serialReadTaskCount;
+    debugger.serialWriteTaskPreviousCount = debugger.serialWriteTaskCount;
   }
 }

@@ -3,10 +3,7 @@
  * @author Dominic Gasperini
  * @brief all of the unique data types used to manage the state of the car
  * @version 1.0
- * @date 2023-05-04
- * 
- * @copyright Copyright (c) 2023
- * 
+ * @date 2024-01-12
  */
 
 
@@ -202,18 +199,22 @@ typedef struct Debugger
     bool debugEnabled;
     bool serial_debugEnabled;
     bool IO_debugEnabled;
+    bool twai_debugEnable;
     bool scheduler_debugEnable;
 
     // I/O data
     TelemetryCoreData IO_data;
 
-    // precharge data
-    PrechargeStates prechargeState;
-
     // scheduler data
     int ioReadTaskCount;
     int serialReadTaskCount;
     int serialWriteTaskCount;
+    int twaiReadTaskCount;
+
+    int ioReadTaskPreviousCount;
+    int serialReadTaskPreviousCount;
+    int serialWriteTaskPreviousCount;
+    int twaiReadTaskPreviousCount;
 } Debugger;
 
 
