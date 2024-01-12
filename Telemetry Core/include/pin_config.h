@@ -57,6 +57,10 @@ esp_pm_config_esp32s3_t power_configuration {
 #define STEERING_DEFLECTION_PIN         20
 
 
+// TWAI
+#define TWAI_RX_PIN                     42
+#define TWAI_TX_PIN                     41
+
 // Serial
 #define GPS_TX_PIN                      40
 #define GPS_RX_PIN                      39
