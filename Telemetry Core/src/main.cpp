@@ -539,6 +539,12 @@ void SerialReadTask(void* pvParameters)
 
 
     // IMU
+
+
+    // debugging
+    if (debugger.debugEnabled) {
+      debugger.serialReadTaskCount++;
+    }
   }
 }
 
@@ -555,10 +561,13 @@ void SerialWriteTask(void* pvParameters)
 
 
     // HUD update
-  }
 
-  // end task
-  vTaskDelete(NULL);
+
+    // debugging
+    if (debugger.debugEnabled) {
+      debugger.serialWriteTaskCount++;
+    }
+  }
 }
 
 
@@ -637,6 +646,11 @@ void TWAIReadTask(void* pvParameters)
           // do nothing
         break;
       }
+    }
+
+    // debugging
+    if (debugger.debugEnabled) {
+      debugger.twaiReadTaskCount++;
     }
   }
 }
