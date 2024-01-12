@@ -528,7 +528,6 @@ void IOReadTask(void* pvParameters)
 
 /**
  * @brief reads the various serial busses
- * 
  * @param pvParameters parameters passed to task
  */
 void SerialReadTask(void* pvParameters)
