@@ -304,7 +304,7 @@ void setup() {
   Serial.printf("\n\n|--- STARTING SETUP ---|\n\n");
 
   // setup managment struct
-  struct setup
+  struct Setup
   {
     bool ioActive = false;
     bool gpsActive = false;
@@ -313,7 +313,7 @@ void setup() {
     bool loraActive = false;
     bool twaiActive = false;
   };
-  setup setup;
+  Setup setup;
   // -------------------------- initialize GPIO ------------------------------ //
   analogReadResolution(12);
   
