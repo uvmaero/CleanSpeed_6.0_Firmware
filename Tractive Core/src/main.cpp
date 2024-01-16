@@ -81,7 +81,7 @@
 // tasks
 #define TWAI_BLOCK_DELAY                5           // time to block to complete function call in FreeRTOS ticks (milliseconds)
 
-#define TASK_STACK_SIZE                 4096        // in bytes
+#define TASK_STACK_SIZE                 9092        // in bytes
 #define TASK_HIGH_PRIORITY              16          // max is 32 but its all relative so we don't need to use 32
 #define TASK_MEDIUM_PRIORITY            8           // see above
 
@@ -244,7 +244,7 @@ TaskHandle_t xHandleSerial = NULL;
 
 
 // TWAI
-static const twai_general_config_t can_general_config = TWAI_GENERAL_CONFIG_DEFAULT((gpio_num_t)TWAI_TX_PIN, (gpio_num_t)TWAI_RX_PIN, TWAI_MODE_NORMAL);
+static const twai_general_config_t can_general_config = TWAI_GENERAL_CONFIG_DEFAULT((gpio_num_t)TWAI_TX_PIN, (gpio_num_t)TWAI_RX_PIN, TWAI_MODE_NO_ACK);
 static const twai_timing_config_t can_timing_config = TWAI_TIMING_CONFIG_500KBITS();
 static const twai_filter_config_t can_filter_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
 
@@ -391,17 +391,37 @@ void setup() {
     IOUpdateCallback();
   }
   if (setup.twaiActive) {
-    TWAIUpdateCallback();
+    // TWAIUpdateCallback();
   }
-  PrechargeCallback();
+  // PrechargeCallback();
 
   // task status
   Serial.printf("\nTask Status:\n");
-  Serial.printf("I/O READ TASK STATUS: %s\n", eTaskGetState(xHandleIORead) == eRunning ? "RUNNING" : "ERROR");
-  Serial.printf("I/O WRITE TASK STATUS: %s\n", eTaskGetState(xHandleIOWrite) == eRunning ? "RUNNING" : "ERROR");
-  Serial.printf("TWAI READ TASK STATUS: %s\n", eTaskGetState(xHandleTWAIRead) == eRunning ? "RUNNING" : "ERROR");
-  Serial.printf("TWAI WRITE TASK STATUS: %s\n", eTaskGetState(xHandleTWAIWrite) == eRunning ? "RUNNING" : "ERROR");
-  Serial.printf("PRECHARGE TASK STATUS: %s\n", eTaskGetState(xHandlePrecharge) == eRunning ? "RUNNING" : "ERROR");
+  if (xHandleIORead != NULL)
+    Serial.printf("I/O READ TASK STATUS: %s\n", eTaskGetState(xHandleIORead) == eRunning ? "RUNNING" : "ERROR");
+  else 
+    Serial.printf("I/O READ TASK STATUS: NOT RUNNING\n");
+  
+  if (xHandleIOWrite != NULL)
+    Serial.printf("I/O WRITE TASK STATUS: %s\n", eTaskGetState(xHandleIOWrite) == eRunning ? "RUNNING" : "ERROR");
+  else 
+    Serial.printf("I/O WRITE TASK STATUS: NOT RUNNING\n");
+
+  if (xHandleTWAIRead != NULL)
+    Serial.printf("TWAI READ TASK STATUS: %s\n", eTaskGetState(xHandleTWAIRead) == eRunning ? "RUNNING" : "ERROR");
+  else 
+    Serial.printf("TWAI READ TASK STATUS: NOT RUNNING\n");
+
+  if (xHandleTWAIWrite != NULL)
+    Serial.printf("TWAI WRITE TASK STATUS: %s\n", eTaskGetState(xHandleTWAIWrite) == eRunning ? "RUNNING" : "ERROR");
+  else 
+    Serial.printf("TWAI WRITE TASK STATUS: NOT RUNNING\n");
+
+  if (xHandlePrecharge != NULL)
+    Serial.printf("PRECHARGE TASK STATUS: %s\n", eTaskGetState(xHandlePrecharge) == eRunning ? "RUNNING" : "ERROR");
+  else
+    Serial.printf("PRECHARGE TASK STATUS: NOT RUNNING\n");
+
 
   // scheduler status
   if (xTaskGetSchedulerState() == 2) {
@@ -441,8 +461,11 @@ void IOUpdateCallback()
   static uint8_t ucParameterToPassWrite;
 
   // queue tasks 
-  xTaskCreatePinnedToCore(IOReadTask, "Read-IO", TASK_STACK_SIZE, &ucParameterToPassRead, TASK_HIGH_PRIORITY, &xHandleIORead, 0);     // pinned to core 0
-  xTaskCreatePinnedToCore(IOWriteTask, "Write-IO", TASK_STACK_SIZE, &ucParameterToPassWrite, TASK_HIGH_PRIORITY, &xHandleIOWrite, 0); // pinned to core 0
+  xTaskCreatePinnedToCore(IOReadTask, "Read-IO", TASK_STACK_SIZE, &ucParameterToPassRead, tskIDLE_PRIORITY, &xHandleIORead, 0);     // pinned to core 0
+  xTaskCreatePinnedToCore(IOWriteTask, "Write-IO", TASK_STACK_SIZE, &ucParameterToPassWrite, tskIDLE_PRIORITY, &xHandleIOWrite, 0); // pinned to core 0
+
+  // xTaskCreate(IOReadTask, "Read-IO", TASK_STACK_SIZE, &ucParameterToPassRead, TASK_HIGH_PRIORITY, &xHandleIORead);     
+  // xTaskCreate(IOWriteTask, "Write-IO", TASK_STACK_SIZE, &ucParameterToPassWrite, TASK_HIGH_PRIORITY, &xHandleIOWrite); 
 
   portEXIT_CRITICAL_ISR(&timerMux);
 
@@ -465,6 +488,9 @@ void TWAIUpdateCallback()
   // queue tasks 
   xTaskCreatePinnedToCore(TWAIReadTask, "Read-TWAI", TASK_STACK_SIZE, &ucParameterToPassRead, TASK_HIGH_PRIORITY, &xHandleTWAIRead, 1);     // pinned to core 1
   xTaskCreatePinnedToCore(TWAIWriteTask, "Write-TWAI", TASK_STACK_SIZE, &ucParameterToPassWrite, TASK_HIGH_PRIORITY, &xHandleTWAIWrite, 1); // pinned to core 1
+
+  // xTaskCreate(TWAIReadTask, "Read-TWAI", TASK_STACK_SIZE, &ucParameterToPassRead, TASK_HIGH_PRIORITY, &xHandleTWAIRead);    
+  // xTaskCreate(TWAIWriteTask, "Write-TWAI", TASK_STACK_SIZE, &ucParameterToPassWrite, TASK_HIGH_PRIORITY, &xHandleTWAIWrite);
 
   portEXIT_CRITICAL_ISR(&timerMux);
   
@@ -1592,8 +1618,8 @@ void PrintDebug() {
     //   debugger.twaiReadTaskCount, taskRefreshRate.at(2), taskStatesStrings.at(3), debugger.twaiWriteTaskCount, taskRefreshRate.at(3), taskStatesStrings.at(4), debugger.prechargeTaskCount, taskRefreshRate.at(4));
 
     Serial.printf("uptime: %d | read io:<%d Hz> (%d) | write io:<%d Hz> (%d) | read twai:<%d Hz> (%d) | write twai:<%d Hz> (%d) | precharge:<%d Hz> (%d) \r",
-      uptime, debugger.ioReadTaskCount, taskRefreshRate.at(0), debugger.ioWriteTaskCount, taskRefreshRate.at(1),
-      debugger.twaiReadTaskCount, taskRefreshRate.at(2), debugger.twaiWriteTaskCount, taskRefreshRate.at(3),  debugger.prechargeTaskCount, taskRefreshRate.at(4));
+      uptime, taskRefreshRate.at(0), debugger.ioReadTaskCount, taskRefreshRate.at(1), debugger.ioWriteTaskCount,
+      taskRefreshRate.at(2), debugger.twaiReadTaskCount, taskRefreshRate.at(3), debugger.twaiWriteTaskCount, taskRefreshRate.at(4), debugger.prechargeTaskCount);
 
     // update counters
     debugger.ioReadTaskPreviousCount = debugger.ioReadTaskCount;
