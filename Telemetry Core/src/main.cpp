@@ -844,8 +844,8 @@ void PrintDebug()
 
     // print it
     Serial.printf("uptime: %d | read io:<%d Hz> (%d) | read serial:<%d Hz> (%d) | write serial:<%d Hz> (%d) | read twai:<%d Hz> (%d) \r",
-      uptime, debugger.ioReadTaskCount, taskRefreshRate.at(0), debugger.serialReadTaskCount, taskRefreshRate.at(1),
-      debugger.serialWriteTaskCount, taskRefreshRate.at(2), debugger.twaiReadTaskCount, taskRefreshRate.at(3));
+      uptime, taskRefreshRate.at(0), debugger.ioReadTaskCount, taskRefreshRate.at(1), debugger.serialReadTaskCount,
+      taskRefreshRate.at(2), debugger.serialWriteTaskCount, taskRefreshRate.at(3), debugger.twaiReadTaskCount);
 
     // update counters
     debugger.ioReadTaskPreviousCount = debugger.ioReadTaskCount;
