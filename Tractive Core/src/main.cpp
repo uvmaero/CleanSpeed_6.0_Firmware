@@ -39,7 +39,7 @@
 #define TRAC_CON_ENABLE_BIAS            0.1         // the activation threshold of traction control expressed as a percentage difference between front and rear wheel speeds
 #define TRAC_CON_CORNER_ENABLE          0.7         // percent difference between rear wheel speeds needed to enable cornering traction control
 #define TRAC_CON_MAX_MOD                0.75        // maximum power reduction percentage that traction control can apply
-#define TRAC_CON_MOD_STEP               0.02        // the step in which each iteration of traction control modified the throttle response
+#define TRAC_CON_MOD_STEP               0.01        // the step in which each iteration of traction control modified the throttle response
 #define TRAC_CON_STEP_INCREASE_MOD      3           // the decrease in traction control management as a mutliple of the increasing step          
 
 #define TIRE_DIAMETER                   20.0        // diameter of the vehicle's tires in inches
@@ -81,14 +81,14 @@
 // tasks
 #define TWAI_BLOCK_DELAY                1           // time to block to complete function call in FreeRTOS ticks (milliseconds)
 
-#define TASK_STACK_SIZE                 4096        // in bytes
+#define TASK_STACK_SIZE                 20000       // in bytes
 #define TASK_HIGH_PRIORITY              16          // max is 32 but its all relative so we don't need to use 32
 #define TASK_MEDIUM_PRIORITY            8           // see above
 
 // debug
 #define ENABLE_DEBUG                    true       // master debug message control
 #if ENABLE_DEBUG
-  #define MAIN_LOOP_DELAY               1000        // delay in main loop
+  #define MAIN_LOOP_DELAY               500        // delay in main loop
 #else
   #define MAIN_LOOP_DELAY               1
 #endif
@@ -246,6 +246,8 @@ TaskHandle_t xHandleTWAIWrite = NULL;
 TaskHandle_t xHandlePrecharge = NULL;
 TaskHandle_t xHandleSerial = NULL;
 
+TaskHandle_t xHandleDebug = NULL;
+
 
 // TWAI
 static const twai_general_config_t can_general_config = TWAI_GENERAL_CONFIG_DEFAULT((gpio_num_t)TWAI_TX_PIN, (gpio_num_t)TWAI_RX_PIN, TWAI_MODE_NORMAL);
@@ -260,17 +262,13 @@ static const twai_filter_config_t can_filter_config = TWAI_FILTER_CONFIG_ACCEPT_
 */
 
 
-// callbacks
-void IOUpdateCallback();
-void TWAIUpdateCallback();
-void PrechargeCallback();
-
 // tasks
 void IOReadTask(void* pvParameters);
 void IOWriteTask(void* pvParameters);
 void TWAIReadTask(void* pvParameters);
 void TWAIWriteTask(void* pvParameters);
 void PrechargeTask(void* pvParameters);
+void DebugTask(void* pvParameters);
 
 // helpers
 void GetCommandedTorque();
@@ -395,12 +393,21 @@ void setup() {
   
   // start tasks
   if (xMutex != NULL) {
-    if (setup.ioActive)
-      IOUpdateCallback();
-    if (setup.twaiActive)
-      TWAIUpdateCallback();
+    if (setup.ioActive) {
+      xTaskCreate(IOReadTask, "Read-IO", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleIORead);     
+      xTaskCreate(IOWriteTask, "Write-IO", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleIOWrite); 
+    }
 
-    PrechargeCallback();
+    if (setup.twaiActive) {
+      // xTaskCreate(TWAIReadTask, "Read-TWAI", TASK_STACK_SIZE, NULL, 1, &xHandleTWAIRead);
+      xTaskCreate(TWAIWriteTask, "Write-TWAI", TASK_STACK_SIZE, NULL, 1, &xHandleTWAIWrite);
+    }
+    
+    xTaskCreate(PrechargeTask, "Precharge-Update", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandlePrecharge);
+
+    if (debugger.debugEnabled == true) {
+      xTaskCreate(DebugTask, "Debugger", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleDebug);
+    }
   }
   else {
     Serial.printf("FAILED TO INIT MUTEX!\nHALTING OPERATIONS!");
@@ -450,82 +457,6 @@ void setup() {
   }
   Serial.printf("\n\n|--- END SETUP ---|\n\n");
   // ---------------------------------------------------------------------------------------- //
-}
-
-
-/*
-===============================================================================================
-                                    Callback Functions
-===============================================================================================
-*/
-
-
-/**
- * @brief callback function for queueing I/O read and write tasks
- * @param args arguments to be passed to the task
- */
-void IOUpdateCallback() 
-{
-  portENTER_CRITICAL_ISR(&timerMux);
-
-  // inits
-  static uint8_t ucParameterToPassRead;
-  static uint8_t ucParameterToPassWrite;
-
-  // queue tasks 
-  xTaskCreatePinnedToCore(IOReadTask, "Read-IO", TASK_STACK_SIZE, &ucParameterToPassRead, 18, &xHandleIORead, 0);     // pinned to core 0
-  xTaskCreatePinnedToCore(IOWriteTask, "Write-IO", TASK_STACK_SIZE, &ucParameterToPassWrite, 18, &xHandleIOWrite, 0); // pinned to core 0
-
-  // xTaskCreate(IOReadTask, "Read-IO", TASK_STACK_SIZE, &ucParameterToPassRead, 20, &xHandleIORead);     
-  // xTaskCreate(IOWriteTask, "Write-IO", TASK_STACK_SIZE, &ucParameterToPassWrite, 18, &xHandleIOWrite); 
-
-  portEXIT_CRITICAL_ISR(&timerMux);
-
-  return;
-}
-
-
-/**
- * @brief callback function for queueing TWAI read and write tasks
- * @param args arguments to be passed to the task
- */
-void TWAIUpdateCallback() 
-{
-  portENTER_CRITICAL_ISR(&timerMux);
-
-  // inits
-  static uint8_t ucParameterToPassRead;
-  static uint8_t ucParameterToPassWrite;
-
-  // queue tasks 
-  xTaskCreatePinnedToCore(TWAIReadTask, "Read-TWAI", TASK_STACK_SIZE, &ucParameterToPassRead, 18, &xHandleTWAIRead, 1);     // pinned to core 1
-  xTaskCreatePinnedToCore(TWAIWriteTask, "Write-TWAI", TASK_STACK_SIZE, &ucParameterToPassWrite, 20, &xHandleTWAIWrite, 1); // pinned to core 1
-
-  // xTaskCreate(TWAIReadTask, "Read-TWAI", TASK_STACK_SIZE, &ucParameterToPassRead, 18, &xHandleTWAIRead);    
-  // xTaskCreate(TWAIWriteTask, "Write-TWAI", TASK_STACK_SIZE, &ucParameterToPassWrite, 20, &xHandleTWAIWrite);
-
-  portEXIT_CRITICAL_ISR(&timerMux);
-  
-  return;
-}
-
-
-/**
- * @brief callback function to create a new Precharge task 
- */
-void PrechargeCallback() 
-{
-  portENTER_CRITICAL_ISR(&timerMux);
-  
-  // inits
-  static uint8_t ucParameterToPass;
-
-  // queue task
-  xTaskCreate(PrechargeTask, "Precharge-Update", TASK_STACK_SIZE, &ucParameterToPass, 18, &xHandlePrecharge);
-
-  portEXIT_CRITICAL_ISR(&timerMux);
-
-  return;
 }
 
 
@@ -645,7 +576,7 @@ void IOReadTask(void* pvParameters)
   for (;;) 
   {
     // check for mutex availability
-    if (xSemaphoreTake(xMutex, (TickType_t) 5) == pdTRUE)
+    if (xSemaphoreTake(xMutex, (TickType_t) 10) == pdTRUE)
     {
 
       // read pedals
@@ -760,10 +691,8 @@ void IOReadTask(void* pvParameters)
       xSemaphoreGive(xMutex);
     }
 
-    // mutex couldn't be taken
-    else {
-      vTaskDelay(1);
-    }
+    // limit task refresh rate
+    vTaskDelay(5);
   }
 }
 
@@ -777,7 +706,7 @@ void IOWriteTask(void* pvParameters)
   for (;;) 
   {
     // check for mutex availability
-    if (xSemaphoreTake(xMutex, (TickType_t) 5) == pdTRUE)
+    if (xSemaphoreTake(xMutex, (TickType_t) 10) == pdTRUE)
     {
 
       // brake light 
@@ -844,10 +773,8 @@ void IOWriteTask(void* pvParameters)
       xSemaphoreGive(xMutex);
     }
 
-    // mutex couldn't be taken
-    else {
-      vTaskDelay(1);
-    }
+    // limit task refresh rate
+    vTaskDelay(5);
   }
 }
 
@@ -861,7 +788,7 @@ void TWAIReadTask(void* pvParameters)
   for (;;) 
   {
     // check for mutex availability
-    if (xSemaphoreTake(xMutex, (TickType_t) 5) == pdTRUE)
+    if (xSemaphoreTake(xMutex, (TickType_t) 10) == pdTRUE)
     {
       // inits
       twai_message_t incomingMessage;
@@ -921,11 +848,6 @@ void TWAIReadTask(void* pvParameters)
       // release mutex!
       xSemaphoreGive(xMutex);
     }
-
-    // mutex couldn't be taken
-    else {
-      vTaskDelay(1);
-    }
   }
 }
 
@@ -939,7 +861,7 @@ void TWAIWriteTask(void* pvParameters)
   for (;;)
   {
     // check for mutex availability
-    if (xSemaphoreTake(xMutex, (TickType_t) 5) == pdTRUE)
+    if (xSemaphoreTake(xMutex, (TickType_t) 10) == pdTRUE)
     {
       // tractive system control message
       twai_message_t rinehartMessage;
@@ -1131,11 +1053,6 @@ void TWAIWriteTask(void* pvParameters)
         debugger.twaiWriteTaskCount++;
       }
     }
-
-    // mutex couldn't be taken
-    else {
-      vTaskDelay(1);
-    }
   }
 }
 
@@ -1149,7 +1066,7 @@ void PrechargeTask(void* pvParameters)
   for (;;)
   {
     // check for mutex availability
-    if (xSemaphoreTake(xMutex, (TickType_t) 5) == pdTRUE)
+    if (xSemaphoreTake(xMutex, (TickType_t) 10) == pdTRUE)
     {
       // precharge state machine
       switch (tractiveCoreData.tractive.prechargeState) {
@@ -1234,10 +1151,35 @@ void PrechargeTask(void* pvParameters)
       xSemaphoreGive(xMutex);
     }
 
-    // mutex couldn't be taken
-    else {
-      vTaskDelay(1);
+    // limit task refresh rate
+    vTaskDelay(250);
+  }
+}
+
+
+/**
+ * @brief manages toggle-able debug settings & scheduler debugging 
+ */
+void DebugTask(void* pvParameters) {
+  for (;;) 
+  {
+    // CAN
+    if (debugger.TWAI_debugEnabled) {
+      PrintTWAIDebug();
     }
+
+    // I/O
+    if (debugger.IO_debugEnabled) {
+      PrintIODebug();
+    }
+
+    // Scheduler
+    if (debugger.scheduler_debugEnable) {
+      PrintScheduler();
+    }
+
+    // limit refresh rate
+    vTaskDelay(1000);
   }
 }
 
@@ -1255,12 +1197,7 @@ void PrechargeTask(void* pvParameters)
 void loop()
 {
   // everything is managed by RTOS, so nothing really happens here!
-  vTaskDelay(MAIN_LOOP_DELAY);    // prevent watchdog from getting upset & for debugging, limit print refresh rate
-
-  // debugging
-  if (debugger.debugEnabled) {
-    PrintDebug();
-  }
+  vTaskDelay(1);    // prevent watchdog from getting upset
 }
 
 
@@ -1619,90 +1556,77 @@ void PrintIODebug() {
 
 
 /**
- * @brief manages toggle-able debug settings & scheduler debugging 
- */
-void PrintDebug() {
-  // CAN
-  if (debugger.TWAI_debugEnabled) {
-      PrintTWAIDebug();
+ * @brief scheduler debugging
+*/
+void PrintScheduler() {
+  // inits
+  std::vector<eTaskState> taskStates;
+  std::vector<std::string> taskStatesStrings;
+  std::vector<int> taskRefreshRate;
+  int uptime = esp_rtc_get_time_us() / 1000000;
+
+  // gather task information
+  if (xHandleIORead != NULL) {
+    taskStates.push_back(eTaskGetState(xHandleIORead));
+  }
+  if (xHandleIOWrite != NULL) {
+    taskStates.push_back(eTaskGetState(xHandleIOWrite));
+  }
+  if (xHandleTWAIRead != NULL) {
+    taskStates.push_back(eTaskGetState(xHandleTWAIRead));
+  }
+  if (xHandleTWAIWrite != NULL) {
+  taskStates.push_back(eTaskGetState(xHandleTWAIWrite));
+  }
+  if (xHandlePrecharge != NULL) {
+    taskStates.push_back(eTaskGetState(xHandlePrecharge));
   }
 
-  // I/O
-  if (debugger.IO_debugEnabled) {
-    PrintIODebug();
-  }
+  taskRefreshRate.push_back(debugger.ioReadTaskCount - debugger.ioReadTaskPreviousCount);
+  taskRefreshRate.push_back(debugger.ioWriteTaskCount - debugger.ioWriteTaskPreviousCount);
+  taskRefreshRate.push_back(debugger.twaiReadTaskCount - debugger.twaiReadTaskPreviousCount);
+  taskRefreshRate.push_back(debugger.twaiWriteTaskCount - debugger.twaiWriteTaskPreviousCount);
+  taskRefreshRate.push_back(debugger.prechargeTaskCount - debugger.prechargeTaskPreviousCount);
 
-  // Scheduler
-  if (debugger.scheduler_debugEnable) {
-    // inits
-    std::vector<eTaskState> taskStates;
-    std::vector<std::string> taskStatesStrings;
-    std::vector<int> taskRefreshRate;
-    int uptime = esp_rtc_get_time_us() / 1000000;
+  // make it usable
+  for (int i = 0; i < taskStates.size() - 1; ++i) {
+    switch (taskStates.at(i))
+    {
+    case eReady:
+      taskStatesStrings.push_back("RUNNING");        
+    break;
 
-    // gather task information
-    if (xHandleIORead != NULL) {
-      taskStates.push_back(eTaskGetState(xHandleIORead));
-    }
-    if (xHandleIOWrite != NULL) {
-      taskStates.push_back(eTaskGetState(xHandleIOWrite));
-    }
-    if (xHandleTWAIRead != NULL) {
-      taskStates.push_back(eTaskGetState(xHandleTWAIRead));
-    }
-    if (xHandleTWAIWrite != NULL) {
-    taskStates.push_back(eTaskGetState(xHandleTWAIWrite));
-    }
-    if (xHandlePrecharge != NULL) {
-      taskStates.push_back(eTaskGetState(xHandlePrecharge));
-    }
+    case eBlocked:
+      taskStatesStrings.push_back("BLOCKED");        
+    break;
 
-    taskRefreshRate.push_back(debugger.ioReadTaskCount - debugger.ioReadTaskPreviousCount);
-    taskRefreshRate.push_back(debugger.ioWriteTaskCount - debugger.ioWriteTaskPreviousCount);
-    taskRefreshRate.push_back(debugger.twaiReadTaskCount - debugger.twaiReadTaskPreviousCount);
-    taskRefreshRate.push_back(debugger.twaiWriteTaskCount - debugger.twaiWriteTaskPreviousCount);
-    taskRefreshRate.push_back(debugger.prechargeTaskCount - debugger.prechargeTaskPreviousCount);
+    case eSuspended:
+      taskStatesStrings.push_back("SUSPENDED");        
+    break;
 
-    // make it usable
-    for (int i = 0; i < taskStates.size() - 1; ++i) {
-      switch (taskStates.at(i))
-      {
-      case eReady:
-        taskStatesStrings.push_back("RUNNING");        
-      break;
-
-      case eBlocked:
-        taskStatesStrings.push_back("BLOCKED");        
-      break;
-
-      case eSuspended:
-        taskStatesStrings.push_back("SUSPENDED");        
-      break;
-
-      case eDeleted:
-        taskStatesStrings.push_back("DELETED");        
-      break;
-      
-      default:
-        taskStatesStrings.push_back("ERROR");        
-        break;
-      }
-    }
-
-    // print
-    // Serial.printf("read io:[%s](%d)<%d Hz> | write io:[%s](%d)<%d Hz> | read twai:[%s](%d)<%d Hz> | write twai:[%s](%d)<%d Hz> | precharge:[%s](%d)<%d Hz> \r", 
-    //   taskStatesStrings.at(0), debugger.ioReadTaskCount, taskRefreshRate.at(0), taskStatesStrings.at(1), debugger.ioWriteTaskCount, taskRefreshRate.at(1), taskStatesStrings.at(2), 
-    //   debugger.twaiReadTaskCount, taskRefreshRate.at(2), taskStatesStrings.at(3), debugger.twaiWriteTaskCount, taskRefreshRate.at(3), taskStatesStrings.at(4), debugger.prechargeTaskCount, taskRefreshRate.at(4));
+    case eDeleted:
+      taskStatesStrings.push_back("DELETED");        
+    break;
     
-    Serial.printf("uptime: %d | read io:<%d Hz> (%d) | write io:<%d Hz> (%d) | read twai:<%d Hz> (%d) | write twai:<%d Hz> (%d) | precharge:<%d Hz> (%d) \r",
-      uptime, taskRefreshRate.at(0), debugger.ioReadTaskCount, taskRefreshRate.at(1), debugger.ioWriteTaskCount,
-      taskRefreshRate.at(2), debugger.twaiReadTaskCount, taskRefreshRate.at(3), debugger.twaiWriteTaskCount, taskRefreshRate.at(4), debugger.prechargeTaskCount);
-
-    // update counters
-    debugger.ioReadTaskPreviousCount = debugger.ioReadTaskCount;
-    debugger.ioWriteTaskPreviousCount = debugger.ioWriteTaskCount;
-    debugger.twaiReadTaskPreviousCount = debugger.twaiReadTaskCount;
-    debugger.twaiWriteTaskPreviousCount = debugger.twaiWriteTaskCount;
-    debugger.prechargeTaskPreviousCount = debugger.prechargeTaskCount;
+    default:
+      taskStatesStrings.push_back("ERROR");        
+      break;
+    }
   }
+
+  // print
+  // Serial.printf("read io:[%s](%d)<%d Hz> | write io:[%s](%d)<%d Hz> | read twai:[%s](%d)<%d Hz> | write twai:[%s](%d)<%d Hz> | precharge:[%s](%d)<%d Hz> \r", 
+  //   taskStatesStrings.at(0), debugger.ioReadTaskCount, taskRefreshRate.at(0), taskStatesStrings.at(1), debugger.ioWriteTaskCount, taskRefreshRate.at(1), taskStatesStrings.at(2), 
+  //   debugger.twaiReadTaskCount, taskRefreshRate.at(2), taskStatesStrings.at(3), debugger.twaiWriteTaskCount, taskRefreshRate.at(3), taskStatesStrings.at(4), debugger.prechargeTaskCount, taskRefreshRate.at(4));
+  
+  Serial.printf("uptime: %d | read io:<%d Hz> (%d) | write io:<%d Hz> (%d) | read twai:<%d Hz> (%d) | write twai:<%d Hz> (%d) | precharge:<%d Hz> (%d) \r",
+    uptime, taskRefreshRate.at(0), debugger.ioReadTaskCount, taskRefreshRate.at(1), debugger.ioWriteTaskCount,
+    taskRefreshRate.at(2), debugger.twaiReadTaskCount, taskRefreshRate.at(3), debugger.twaiWriteTaskCount, taskRefreshRate.at(4), debugger.prechargeTaskCount);
+
+  // update counters
+  debugger.ioReadTaskPreviousCount = debugger.ioReadTaskCount;
+  debugger.ioWriteTaskPreviousCount = debugger.ioWriteTaskCount;
+  debugger.twaiReadTaskPreviousCount = debugger.twaiReadTaskCount;
+  debugger.twaiWriteTaskPreviousCount = debugger.twaiWriteTaskCount;
+  debugger.prechargeTaskPreviousCount = debugger.prechargeTaskCount;
 }

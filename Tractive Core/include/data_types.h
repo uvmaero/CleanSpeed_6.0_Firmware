@@ -186,6 +186,6 @@ typedef struct Debugger
 
 
 // debug functions
-void PrintDebug();
 void PrintTWAIDebug();
 void PrintIODebug();
+void PrintScheduler();
