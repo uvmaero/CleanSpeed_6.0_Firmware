@@ -87,11 +87,8 @@
 
 // debug
 #define ENABLE_DEBUG                    true       // master debug message control
-#if ENABLE_DEBUG
-  #define MAIN_LOOP_DELAY               500        // delay in main loop
-#else
-  #define MAIN_LOOP_DELAY               1
-#endif
+#define DEBUG_DELAY                     1000       // delay in debug task
+
 
 
 /*
@@ -276,6 +273,7 @@ uint16_t CalculateThrottleResponse(uint16_t value);
 uint16_t TractionControl(uint16_t value);
 short DriveModeToNumber();
 short PrechargeStateToNumber();
+String TaskStateToString(eTaskState state);
 
 // ISRs
 void FrontWheelSpeedISR();
@@ -392,15 +390,15 @@ void setup() {
   Serial.printf("TWAI TASK SETUP: %s\n", setup.twaiActive ? "COMPLETE" : "FAILED");
   
   // start tasks
-  if (xMutex != NULL) {
+  if (xMutex != NULL) {    
     if (setup.ioActive) {
-      xTaskCreate(IOReadTask, "Read-IO", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleIORead);     
-      xTaskCreate(IOWriteTask, "Write-IO", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleIOWrite); 
+      xTaskCreatePinnedToCore(IOReadTask, "Read-IO", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleIORead, 0);     
+      xTaskCreatePinnedToCore(IOWriteTask, "Write-IO", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleIOWrite, 0); 
     }
 
     if (setup.twaiActive) {
-      // xTaskCreate(TWAIReadTask, "Read-TWAI", TASK_STACK_SIZE, NULL, 1, &xHandleTWAIRead);
-      xTaskCreate(TWAIWriteTask, "Write-TWAI", TASK_STACK_SIZE, NULL, 1, &xHandleTWAIWrite);
+      // xTaskCreate(TWAIReadTask, "Read-TWAI", TASK_STACK_SIZE, NULL, 1, &xHandleTWAIRead, 1);
+      xTaskCreatePinnedToCore(TWAIWriteTask, "Write-TWAI", TASK_STACK_SIZE, NULL, 1, &xHandleTWAIWrite, 1);
     }
     
     xTaskCreate(PrechargeTask, "Precharge-Update", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandlePrecharge);
@@ -417,29 +415,29 @@ void setup() {
   // task status
   Serial.printf("\nTask Status:\n");
   if (xHandleIORead != NULL)
-    Serial.printf("I/O READ TASK STATUS: %s\n", eTaskGetState(xHandleIORead) == eRunning ? "RUNNING" : "ERROR");
+    Serial.printf("I/O READ TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandleIORead)));
   else 
-    Serial.printf("I/O READ TASK STATUS: NOT RUNNING\n");
+    Serial.printf("I/O READ TASK STATUS: DISABLED!\n");
   
   if (xHandleIOWrite != NULL)
-    Serial.printf("I/O WRITE TASK STATUS: %s\n", eTaskGetState(xHandleIOWrite) == eRunning ? "RUNNING" : "ERROR");
+    Serial.printf("I/O WRITE TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandleIOWrite)));
   else 
-    Serial.printf("I/O WRITE TASK STATUS: NOT RUNNING\n");
+    Serial.printf("I/O WRITE TASK STATUS: DISABLED!\n");
 
   if (xHandleTWAIRead != NULL)
-    Serial.printf("TWAI READ TASK STATUS: %s\n", eTaskGetState(xHandleTWAIRead) == eRunning ? "RUNNING" : "ERROR");
+    Serial.printf("TWAI READ TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandleTWAIRead)));
   else 
-    Serial.printf("TWAI READ TASK STATUS: NOT RUNNING\n");
+    Serial.printf("TWAI READ TASK STATUS: DISABLED!\n");
 
   if (xHandleTWAIWrite != NULL)
-    Serial.printf("TWAI WRITE TASK STATUS: %s\n", eTaskGetState(xHandleTWAIWrite) == eRunning ? "RUNNING" : "ERROR");
+    Serial.printf("TWAI WRITE TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandleTWAIWrite)));
   else 
-    Serial.printf("TWAI WRITE TASK STATUS: NOT RUNNING\n");
+    Serial.printf("TWAI WRITE TASK STATUS: DISABLED!\n");
 
   if (xHandlePrecharge != NULL)
-    Serial.printf("PRECHARGE TASK STATUS: %s\n", eTaskGetState(xHandlePrecharge) == eRunning ? "RUNNING" : "ERROR");
+    Serial.printf("PRECHARGE TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandlePrecharge)));
   else
-    Serial.printf("PRECHARGE TASK STATUS: NOT RUNNING\n");
+    Serial.printf("PRECHARGE TASK STATUS: DISABLED!\n");
 
 
   // scheduler status
@@ -1143,7 +1141,7 @@ void PrechargeTask(void* pvParameters)
 
       // debugging 
       if (debugger.debugEnabled) {
-        // debugger.prechargeState = tractiveCoreData.tractive.prechargeState;
+        debugger.prechargeState = tractiveCoreData.tractive.prechargeState;
         debugger.prechargeTaskCount++;
       }
 
@@ -1179,7 +1177,7 @@ void DebugTask(void* pvParameters) {
     }
 
     // limit refresh rate
-    vTaskDelay(1000);
+    vTaskDelay(DEBUG_DELAY);
   }
 }
 
@@ -1450,6 +1448,40 @@ short PrechargeStateToNumber()
 }
 
 
+/**
+ * 
+*/
+String TaskStateToString(eTaskState state) {
+  // init
+  String stateStr;
+
+  // get state
+  switch (state)
+  {
+  case eReady:
+    stateStr = "RUNNING";        
+  break;
+
+  case eBlocked:
+    stateStr = "BLOCKED";        
+  break;
+
+  case eSuspended:
+    stateStr = "SUSPENDED";        
+  break;
+
+  case eDeleted:
+    stateStr = "DELETED";        
+  break;
+  
+  default:
+    stateStr = "ERROR";        
+    break;
+  }
+
+  return stateStr;
+}
+
 /* 
 ===============================================================================================
                                     DEBUG FUNCTIONS
@@ -1561,7 +1593,7 @@ void PrintIODebug() {
 void PrintScheduler() {
   // inits
   std::vector<eTaskState> taskStates;
-  std::vector<std::string> taskStatesStrings;
+  std::vector<String> taskStatesStrings;
   std::vector<int> taskRefreshRate;
   int uptime = esp_rtc_get_time_us() / 1000000;
 
@@ -1590,28 +1622,7 @@ void PrintScheduler() {
 
   // make it usable
   for (int i = 0; i < taskStates.size() - 1; ++i) {
-    switch (taskStates.at(i))
-    {
-    case eReady:
-      taskStatesStrings.push_back("RUNNING");        
-    break;
-
-    case eBlocked:
-      taskStatesStrings.push_back("BLOCKED");        
-    break;
-
-    case eSuspended:
-      taskStatesStrings.push_back("SUSPENDED");        
-    break;
-
-    case eDeleted:
-      taskStatesStrings.push_back("DELETED");        
-    break;
-    
-    default:
-      taskStatesStrings.push_back("ERROR");        
-      break;
-    }
+    taskStatesStrings.push_back(TaskStateToString(taskStates.at(i)));        
   }
 
   // print
