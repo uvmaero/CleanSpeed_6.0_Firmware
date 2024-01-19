@@ -2,22 +2,27 @@
  * @file pinConfig.h
  * @author dominic gasperini 
  * @brief this file holds the pin layout for the board I/O
- * @version 1.0
- * @date 2023-05-04
- * 
- * @copyright Copyright (c) 2022
- * 
+ * @version 1.5
+ * @date 2024-01-19
  */
 
 
-// includes
+/*
+===============================================================================================
+                                    Includes 
+===============================================================================================
+*/
+
+
 #include <esp_pm.h>
+
 
 /*
 ===========================================================
                     Power Configuration
 ===========================================================
 */
+
 
 esp_pm_config_esp32s3_t power_configuration {
     .max_freq_mhz = 240,   

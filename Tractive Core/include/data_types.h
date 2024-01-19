@@ -2,11 +2,8 @@
  * @file dataTypes.h
  * @author Dominic Gasperini
  * @brief all of the unique data types used to manage the state of the car
- * @version 1.1
- * @date 2024-01-11
- * 
- * @copyright Copyright (c) 2023
- * 
+ * @version 1.5
+ * @date 2024-01-19
  */
 
 
