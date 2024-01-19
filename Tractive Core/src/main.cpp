@@ -82,8 +82,6 @@
 #define TWAI_BLOCK_DELAY                1           // time to block to complete function call in FreeRTOS ticks (milliseconds)
 
 #define TASK_STACK_SIZE                 20000       // in bytes
-#define TASK_HIGH_PRIORITY              16          // max is 32 but its all relative so we don't need to use 32
-#define TASK_MEDIUM_PRIORITY            8           // see above
 
 // debug
 #define ENABLE_DEBUG                    true       // master debug message control
