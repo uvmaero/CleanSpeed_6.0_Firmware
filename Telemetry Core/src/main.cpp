@@ -37,8 +37,8 @@
 
 // tasks
 #define IO_READ_REFRESH_RATE            9           // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define SERIAL_WRITE_REFRESH_RATE       8           // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define SERIAL_READ_REFRESH_RATE        8           // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define SERIAL_WRITE_REFRESH_RATE       9           // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define SERIAL_READ_REFRESH_RATE        9           // measured in ticks (RTOS ticks interrupt at 1 kHz)
 #define DEBUG_REFRESH_RATE              1000        // measured in ticks (RTOS ticks interrupt at 1 kHz)
 
 #define TWAI_BLOCK_DELAY                1           // time to block to complete function call in FreeRTOS ticks
