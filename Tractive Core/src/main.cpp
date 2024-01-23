@@ -75,15 +75,15 @@
 #define BMS_CELL_DATA_ADDR              0x6B2       // cell data
 
 // tasks
-#define IO_WRITE_REFRESH_RATE           5           // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define IO_READ_REFRESH_RATE            5           // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define TWAI_WRITE_REFRESH_RATE         10          // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define TWAI_READ_REFRESH_RATE          10          // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define PRECHARGE_REFRESH_RATE          250         // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define SERIAL_REFRESH_RATE             10          // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define IO_WRITE_REFRESH_RATE           9           // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define IO_READ_REFRESH_RATE            9           // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define TWAI_WRITE_REFRESH_RATE         8           // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define TWAI_READ_REFRESH_RATE          8           // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define PRECHARGE_REFRESH_RATE          225         // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define SERIAL_REFRESH_RATE             95          // measured in ticks (RTOS ticks interrupt at 1 kHz)
 #define DEBUG_REFRESH_RATE              1000        // measured in ticks (RTOS ticks interrupt at 1 kHz)
 
-#define TWAI_BLOCK_DELAY                1           // time to block to complete function call in FreeRTOS ticks (milliseconds)
+#define TWAI_BLOCK_DELAY                1           // time to block to complete function call in FreeRTOS ticks
 
 #define TASK_STACK_SIZE                 20000       // in bytes
 
