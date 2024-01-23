@@ -2,18 +2,15 @@
  * @file pinConfig.h
  * @author dominic gasperini 
  * @brief this file holds the pin layout for the board I/O
- * @version 0.9
- * @date 2024-01-12
- * 
- * @copyright Copyright (c) 2022
- * 
+ * @version 1.0
+ * @date 2024-01-23 
  */
 
 
 /*
-===============================================================================================
-                                    Includes 
-===============================================================================================
+============================================================
+                        Includes 
+============================================================
 */
 
 
@@ -64,12 +61,10 @@ esp_pm_config_esp32s3_t power_configuration {
 #define STEERING_DEFLECTION_PIN         20
 
 
-// TWAI
-#define TWAI_RX_PIN                     42
-#define TWAI_TX_PIN                     41
+// Serial 
+#define SERIAL_TRACTIVE_RX_PIN          42
+#define SERIAL_TRACTIVE_TX_PIN          41
 
-
-// Serial
 #define GPS_TX_PIN                      40
 #define GPS_RX_PIN                      39
 

@@ -2,8 +2,8 @@
  * @file dataTypes.h
  * @author dominic gasperini
  * @brief all of the unique data types used to manage the state of the car
- * @version 0.9
- * @date 2024-01-12
+ * @version 1.0
+ * @date 2024-01-23
  */
 
 
@@ -232,6 +232,6 @@ typedef struct Debugger
 
 
 // debug functions
-void PrintDebug();
 void PrintIODebug();
 void PrintSerialDebug();
+void PrintSchedulerDebug();

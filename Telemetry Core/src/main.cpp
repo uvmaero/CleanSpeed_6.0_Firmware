@@ -2,12 +2,13 @@
  * @file main.cpp
  * @author dominic gasperini
  * @brief telemetry core
- * @version 0.9
- * @date 2024-01-12
+ * @version 1.0
+ * @date 2024-01-23
  * 
  * @ref https://espressif-docs.readthedocs-hosted.com/projects/arduino-esp32/en/latest/libraries.html#apis      (api and hal docs)
  * @ref https://docs.espressif.com/projects/esp-idf/en/latest/esp32s3/_images/ESP32-S3_DevKitC-1_pinlayout.jpg  (pinout & overview)
- * @ref https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/system/freertos_idf.html      (FreeRTOS for ESP32 docs) */
+ * @ref https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/system/freertos_idf.html      (FreeRTOS for ESP32 docs)
+ */
 
 
 /*
@@ -34,26 +35,23 @@
 */
 
 
-// TWAI
-#define TWAI_BLOCK_DELAY                5           // time to block to complete function call in FreeRTOS ticks (milliseconds)
-#define TELEMETRY_TRACTIVE_1_ADDR       0x001
-#define TELEMETRY_TRACTIVE_2_ADDR       0x002
-#define TELEMETRY_SENSOR_ADDR           0x003       // telemetry board sensor data send address
-#define TELEMETRY_INPUTS_ADDR           0x004
-#define TELEMETRY_OUTPUTS_ADDR          0x005
+// tasks
+#define IO_READ_REFRESH_RATE            9           // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define SERIAL_WRITE_REFRESH_RATE       8           // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define SERIAL_READ_REFRESH_RATE        8           // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define DEBUG_REFRESH_RATE              1000        // measured in ticks (RTOS ticks interrupt at 1 kHz)
 
-// tasks & timers
-#define TASK_STACK_SIZE                 4096        // in bytes
-#define TASK_HIGH_PRIORITY              16          // max is 32 but its all relative so we don't need to use 32
-#define TASK_MEDIUM_PRIORITY            8           // see above
+#define TWAI_BLOCK_DELAY                1           // time to block to complete function call in FreeRTOS ticks
+
+#define TASK_STACK_SIZE                 20000       // in bytes
+
+
+// general
+#define SERIAL_BAUD_RATE                9600        // baud rate
+
 
 // debug
 #define ENABLE_DEBUG                    true       // master debug message control
-#if ENABLE_DEBUG
-  #define MAIN_LOOP_DELAY               1000        // delay in main loop
-#else
-  #define MAIN_LOOP_DELAY               1
-#endif
 
 
 /*
@@ -233,21 +231,20 @@ TelemetryCoreData telemetryCoreData = {
 };
 
 
-// RTOS Tasks
+// Mutex
+SemaphoreHandle_t xMutex = NULL;
+
+
+// RTOS Task Handles
 TaskHandle_t xHandleIORead = NULL;
 TaskHandle_t xHandleSerialRead = NULL;
 TaskHandle_t xHandleSerialWrite = NULL;
-TaskHandle_t xHandleTwaiRead = NULL;
+
+TaskHandle_t xHandleDebug = NULL;
 
 
 // Hardware Timers
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
-
-
-// TWAI
-static const twai_general_config_t can_general_config = TWAI_GENERAL_CONFIG_DEFAULT((gpio_num_t)TWAI_TX_PIN, (gpio_num_t)TWAI_RX_PIN, TWAI_MODE_NORMAL);
-static const twai_timing_config_t can_timing_config = TWAI_TIMING_CONFIG_500KBITS();
-static const twai_filter_config_t can_filter_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
 
 
 // GPS
@@ -266,21 +263,17 @@ static const twai_filter_config_t can_filter_config = TWAI_FILTER_CONFIG_ACCEPT_
 */
 
 
-// callbacks
-void IOReadCallback();
-void TWAIReadCallback();
-void SerialUpdateCallback();
-
 // tasks
 void IOReadTask(void* pvParameters);
-void TWAIReadTask(void* pvParameters);
 void SerialReadTask(void* pvParameters);
 void SerialWriteTask(void* pvParameters);
+void DebugTask(void* pvParameters);
 
 
 // helpers
 DriveMode NumberToDriveMode(uint8_t value);
 PrechargeStates NumberToPrechargeState(uint8_t value);
+String TaskStateToString(eTaskState state);
 
 
 /*
@@ -299,10 +292,6 @@ void setup() {
     vTaskDelay(3000);
   }
 
-  // ----------------------- initialize serial connection --------------------- //
-  Serial.begin(9600);
-  Serial.printf("\n\n|--- STARTING SETUP ---|\n\n");
-
   // setup managment struct
   struct Setup
   {
@@ -311,9 +300,19 @@ void setup() {
     bool imuActive = false;
     bool rpiComActive = false;
     bool loraActive = false;
-    bool twaiActive = false;
+    bool serialActive = false;
   };
   Setup setup;
+
+  // ----------------------- initialize serial connection --------------------- //
+  Serial.begin(9600);
+  Serial.printf("\n\n|--- STARTING SETUP ---|\n\n");
+
+  Serial2.begin(SERIAL_BAUD_RATE, SERIAL_8N1, SERIAL_TRACTIVE_RX_PIN, SERIAL_TRACTIVE_TX_PIN);
+
+  Serial.printf("SERIAL INIT [ SUCCESS ]\n");
+  setup.serialActive = true;
+
   // -------------------------- initialize GPIO ------------------------------ //
   analogReadResolution(12);
   
@@ -348,66 +347,84 @@ void setup() {
   setup.ioActive = true;
   // -------------------------------------------------------------------------- //
   
+  // --------------------- initialize RPi Connection -------------------------- //
 
-  // -------------------------- initialize LoRa ------------------------------- //
-
+  Serial.printf("RPi INIT [ SUCCESS ]\n");
+  setup.rpiComActive = true;
   // -------------------------------------------------------------------------- //
 
 
+  // -------------------------- initialize LoRa ------------------------------- //
+
+  Serial.printf("LORA INIT [ SUCCESS ]\n");
+  setup.loraActive = true;
+  // -------------------------------------------------------------------------- //
+
+  
   // -------------------------- initialize GPS -------------------------------- //
 
+  Serial.printf("GPS INIT [ SUCCESS ]\n");
+
+  setup.gpsActive = true;
   // -------------------------------------------------------------------------- //
 
 
   // -------------------------- initialize IMU -------------------------------- //
 
+  Serial.printf("IMU INIT [ SUCCESS ]\n");
+  setup.imuActive = true;
   // -------------------------------------------------------------------------- //
 
 
-  // --------------------- initialize TWAI Controller -------------------------- //
-  // install TWAI driver
-  if(twai_driver_install(&can_general_config, &can_timing_config, &can_filter_config) == ESP_OK) {
-    Serial.printf("TWAI DRIVER INSTALL [ SUCCESS ]\n");
-
-    // start CAN bus
-    if (twai_start() == ESP_OK) {
-      Serial.printf("TWAI INIT [ SUCCESS ]\n");
-      twai_reconfigure_alerts(TWAI_ALERT_ALL, NULL);
-
-      setup.twaiActive = true;
-    }
-
-    else {
-      Serial.printf("TWAI INIT [ FAILED ]\n");
-    }
-  }
-
-  else {
-    Serial.printf("TWAI DRIVER INSTALL [ FAILED ]\n");
-  }
-  // --------------------------------------------------------------------------- //
-
-
   // ------------------------------- Scheduler & Task Status --------------------------------- //
+  // init mutex
+  xMutex = xSemaphoreCreateMutex();
+  
   // task setup status
   Serial.printf("\nTask Setup Status:\n");
   Serial.printf("I/O TASK SETUP: %s\n", setup.ioActive ? "COMPLETE" : "FAILED");
   Serial.printf("SERIAL TASK SETUP: %s\n", setup.ioActive ? "COMPLETE" : "FAILED");
-  Serial.printf("TWAI TASK SETUP: %s\n", setup.twaiActive ? "COMPLETE" : "FAILED");
 
-  // start tasks
-  if (setup.ioActive) {
-    IOReadCallback();
+  if (xMutex != NULL) {
+    // start tasks
+    if (setup.ioActive) {
+      xTaskCreatePinnedToCore(IOReadTask, "IO-Read", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleIORead, 0);
+    }
+
+    if (setup.rpiComActive && setup.gpsActive && setup.imuActive && setup.loraActive && setup.serialActive) {
+      xTaskCreatePinnedToCore(SerialReadTask, "Serial-Read", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleSerialRead, 1);
+      xTaskCreatePinnedToCore(SerialWriteTask, "Serial-Write", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleSerialWrite, 1);
+    }  
+
+    if (debugger.debugEnabled == true) {
+      xTaskCreate(DebugTask, "Debugger", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleDebug);
+    }
   }
-  if (setup.rpiComActive && setup.gpsActive && setup.imuActive && setup.loraActive) {
-    SerialUpdateCallback();
+  else {
+    Serial.printf("FAILED TO INIT MUTEX!\nHALTING OPERATIONS!");
+    while (1) {};
   }
-  if (setup.twaiActive) {
-    TWAIReadCallback();
-  }
+
+  // task status
+  Serial.printf("\nTask Status:\n");
+  if (xHandleIORead != NULL)
+    Serial.printf("I/O READ TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandleIORead)));
+  else 
+    Serial.printf("I/O READ TASK STATUS: DISABLED!\n");
+  
+  if (xHandleSerialRead != NULL) 
+    Serial.printf("SERIAL READ TASK STATUS %s\n", TaskStateToString(eTaskGetState(xHandleSerialRead)));
+  else
+    Serial.printf("SERIAL READ TASK STAUS: DISABLED!\n");
+
+  if (xHandleSerialWrite != NULL) 
+    Serial.printf("SERIAL WRITE TASK STATUS %s\n", TaskStateToString(eTaskGetState(xHandleSerialWrite)));
+  else
+    Serial.printf("SERIAL WRTIE TASK STAUS: DISABLED!\n");
+
 
   // scheduler status
-  if (xTaskGetSchedulerState() == 2) {
+  if (xTaskGetSchedulerState() == taskSCHEDULER_RUNNING) {
     Serial.printf("\nScheduler Status: RUNNING\n");
 
     // clock frequency
@@ -426,75 +443,6 @@ void setup() {
 
 /*
 ===============================================================================================
-                                    Callback Functions
-===============================================================================================
-*/
-
-
-/**
- * @brief callback function for queueing I/O read and write tasks
- * @param args arguments to be passed to the task
- */
-void IOReadCallback() 
-{
-  portENTER_CRITICAL_ISR(&timerMux);
-
-  // inits 
-  static uint8_t ucParameterToPass;
-
-  // queue task
-  xTaskCreate(IOReadTask, "Read-IO", TASK_STACK_SIZE, &ucParameterToPass, tskIDLE_PRIORITY, &xHandleIORead);
-  
-  portEXIT_CRITICAL_ISR(&timerMux);
-
-  return;
-}
-
-
-/**
- * @brief callback function for queueing serial read and write tasks
- * @param args arguments to be passed to the task
- */
-void SerialUpdateCallback() 
-{
-  portENTER_CRITICAL_ISR(&timerMux);
-
-  // inits
-  static uint8_t ucParameterToPassRead;
-  static uint8_t ucParameterToPassWrite;
-
-  // queue tasks
-  xTaskCreate(SerialReadTask, "Read-Serial", TASK_STACK_SIZE, &ucParameterToPassRead, tskIDLE_PRIORITY, &xHandleSerialRead);
-  xTaskCreate(SerialWriteTask, "Write-Serial", TASK_STACK_SIZE, &ucParameterToPassWrite, tskIDLE_PRIORITY, &xHandleSerialWrite);
-
-  portEXIT_CRITICAL_ISR(&timerMux);
-
-  return;
-};
-
-
-/**
- * @brief callback function for queueing twar read tasks
- * @param args arguments to be passed to the task
-*/
-void TWAIReadCallback() 
-{
-  portENTER_CRITICAL_ISR(&timerMux);
-
-  // inits
-  static uint8_t ucParameterToPassRead;
-
-  // queue tasks
-  xTaskCreate(TWAIReadTask, "Read-TWAI", TASK_STACK_SIZE, &ucParameterToPassRead, tskIDLE_PRIORITY, &xHandleTwaiRead);
-
-  portEXIT_CRITICAL_ISR(&timerMux);
-
-  return;
-}
-
-
-/*
-===============================================================================================
                                 FreeRTOS Task Functions
 ===============================================================================================
 */
@@ -508,20 +456,27 @@ void IOReadTask(void* pvParameters)
 {
   for (;;) 
   {
-    // dampers
+    if (xSemaphoreTake(xMutex, (TickType_t) 10) == pdTRUE) {
+      // dampers
 
-    // tire temps
+      // tire temps
 
-    // strain gauges
+      // strain gauges
 
-    // steering
+      // steering
 
+      // release mutex!
+      xSemaphoreGive(xMutex);
+    }
 
     // debugging
     if (debugger.debugEnabled) {
       debugger.IO_data = telemetryCoreData;
       debugger.ioReadTaskCount++;
     }
+
+    // limit task refresh rate
+    vTaskDelay(IO_READ_REFRESH_RATE);
   }
 }
 
@@ -534,16 +489,24 @@ void SerialReadTask(void* pvParameters)
 {
   for (;;) 
   {
-    // GPS
+    if (xSemaphoreTake(xMutex, (TickType_t) 10) == pdTRUE)
+    {
+      // GPS
 
 
-    // IMU
+      // IMU
 
+      // release mutex!
+      xSemaphoreGive(xMutex);
+    }
 
     // debugging
     if (debugger.debugEnabled) {
       debugger.serialReadTaskCount++;
     }
+
+    // limit task refresh rate
+    vTaskDelay(SERIAL_READ_REFRESH_RATE);
   }
 }
 
@@ -556,101 +519,46 @@ void SerialWriteTask(void* pvParameters)
 {
   for (;;) 
   {  
-    // LoRa update
+    if (xSemaphoreTake(xMutex, (TickType_t) 10) == pdTRUE)
+    {
+      // LoRa update
 
 
-    // HUD update
+      // HUD update
 
+      // release mutex!
+      xSemaphoreGive(xMutex);
+    }
 
     // debugging
     if (debugger.debugEnabled) {
       debugger.serialWriteTaskCount++;
     }
+
+    // limit task refresh rate
+    vTaskDelay(SERIAL_WRITE_REFRESH_RATE);
   }
 }
 
 
 /**
- * read twai messages from tractice core
-*/
-void TWAIReadTask(void* pvParameters) 
-{
+ * @brief manages toggle-able debug settings & scheduler debugging 
+ */
+void DebugTask(void* pvParameters) {
   for (;;) 
   {
-    // inits
-    twai_message_t incomingMessage;
-
-    // if rx queue is full clear it (this is bad, implement twai message filtering)
-    uint32_t alerts;
-    twai_read_alerts(&alerts, pdMS_TO_TICKS(TWAI_BLOCK_DELAY));
-    if (alerts & TWAI_ALERT_RX_QUEUE_FULL) {
-      twai_clear_receive_queue();
+    // I/O
+    if (debugger.IO_debugEnabled) {
+      PrintIODebug();
     }
 
-    // check for new messages in the CAN buffer
-    if (twai_receive(&incomingMessage, pdMS_TO_TICKS(TWAI_BLOCK_DELAY)) == ESP_OK) { // if there are messages to be read
-      int id = incomingMessage.identifier;
-      
-      // parse out data
-      switch (id) {
-        // tractive 1
-        case TELEMETRY_TRACTIVE_1_ADDR:
-          telemetryCoreData.tractiveCoreData.tractive.readyToDrive = incomingMessage.data[0];
-          telemetryCoreData.tractiveCoreData.tractive.enableInverter = incomingMessage.data[1];
-          telemetryCoreData.tractiveCoreData.tractive.rinehartVoltage = incomingMessage.data[2];
-          telemetryCoreData.tractiveCoreData.tractive.commandedTorque = incomingMessage.data[3];
-          telemetryCoreData.tractiveCoreData.tractive.driveDirection = incomingMessage.data[4];
-          telemetryCoreData.tractiveCoreData.tractive.tractionControlEnable = incomingMessage.data[5];
-          telemetryCoreData.tractiveCoreData.tractive.tractionControlModifier = incomingMessage.data[6];
-          telemetryCoreData.tractiveCoreData.tractive.currentSpeed = incomingMessage.data[7];
-        break;
-
-        // tractive 2
-        case TELEMETRY_TRACTIVE_2_ADDR:
-          telemetryCoreData.tractiveCoreData.tractive.coastRegen = incomingMessage.data[0];
-          telemetryCoreData.tractiveCoreData.tractive.brakeRegen = incomingMessage.data[1];
-          telemetryCoreData.tractiveCoreData.tractive.prechargeState = NumberToPrechargeState(incomingMessage.data[2]);
-          telemetryCoreData.tractiveCoreData.tractive.driveMode = NumberToDriveMode(incomingMessage.data[3]);
-        break;
-
-        // sensors
-        case TELEMETRY_SENSOR_ADDR:
-          telemetryCoreData.tractiveCoreData.sensors.imdFault = incomingMessage.data[0];
-          telemetryCoreData.tractiveCoreData.sensors.bmsFault = incomingMessage.data[1];
-          telemetryCoreData.tractiveCoreData.sensors.vicoreFault = incomingMessage.data[2];
-          telemetryCoreData.tractiveCoreData.sensors.coolingTempIn = incomingMessage.data[3];
-          telemetryCoreData.tractiveCoreData.sensors.coolingTempOut = incomingMessage.data[4];
-          telemetryCoreData.tractiveCoreData.sensors.frontWheelsSpeed = incomingMessage.data[5];
-          telemetryCoreData.tractiveCoreData.sensors.brWheelSpeed = incomingMessage.data[6];
-          telemetryCoreData.tractiveCoreData.sensors.blWheelSpeed = incomingMessage.data[7];
-        break;
-
-        // inputs
-        case TELEMETRY_INPUTS_ADDR:
-          telemetryCoreData.tractiveCoreData.inputs.pedal0 = incomingMessage.data[0];
-          telemetryCoreData.tractiveCoreData.inputs.pedal1 = incomingMessage.data[1];
-          telemetryCoreData.tractiveCoreData.inputs.frontBrake = incomingMessage.data[2];
-          telemetryCoreData.tractiveCoreData.inputs.rearBrake = incomingMessage.data[3];
-        break;
-
-        // outputs
-        case TELEMETRY_OUTPUTS_ADDR:
-          telemetryCoreData.tractiveCoreData.outputs.vicoreEnable = incomingMessage.data[0];
-          telemetryCoreData.tractiveCoreData.outputs.brakeLightEnable = incomingMessage.data[1];
-          telemetryCoreData.tractiveCoreData.outputs.fansEnable = incomingMessage.data[2];
-          telemetryCoreData.tractiveCoreData.outputs.buzzerEnable = incomingMessage.data[3];
-        break;
-
-        default:
-          // do nothing
-        break;
-      }
+    // Scheduler
+    if (debugger.scheduler_debugEnable) {
+      PrintSchedulerDebug();
     }
 
-    // debugging
-    if (debugger.debugEnabled) {
-      debugger.twaiReadTaskCount++;
-    }
+    // limit refresh rate
+    vTaskDelay(DEBUG_REFRESH_RATE);
   }
 }
 
@@ -668,12 +576,7 @@ void TWAIReadTask(void* pvParameters)
 void loop()
 {
   // everything is managed by RTOS, so nothing really happens here!
-  vTaskDelay(MAIN_LOOP_DELAY);    // prevent watchdog from getting upset
-
-  // debugging
-  if (debugger.debugEnabled) {
-    PrintDebug();
-  }
+  vTaskDelay(1);    // prevent watchdog from getting upset
 }
 
 
@@ -733,6 +636,41 @@ PrechargeStates NumberToPrechargeState(uint8_t value)
 }
 
 
+/**
+ * 
+*/
+String TaskStateToString(eTaskState state) {
+  // init
+  String stateStr;
+
+  // get state
+  switch (state)
+  {
+  case eReady:
+    stateStr = "RUNNING";        
+  break;
+
+  case eBlocked:
+    stateStr = "BLOCKED";        
+  break;
+
+  case eSuspended:
+    stateStr = "SUSPENDED";        
+  break;
+
+  case eDeleted:
+    stateStr = "DELETED";        
+  break;
+  
+  default:
+    stateStr = "ERROR";        
+    break;
+  }
+
+  return stateStr;
+}
+
+
 /* 
 ===============================================================================================
                                     DEBUG FUNCTIONS
@@ -775,82 +713,43 @@ void PrintSerialDebug()
 
 
 /**
- * @brief manages toggle-able debug settings
+ * @brief scheudler debugging
  */
-void PrintDebug()
+void PrintSchedulerDebug()
 {
-  // serial   
-  if (debugger.serial_debugEnabled) {
-    PrintSerialDebug();
+  // inits
+  std::vector<eTaskState> taskStates;
+  std::vector<String> taskStatesStrings;
+  std::vector<int> taskRefreshRate;
+  int uptime = esp_rtc_get_time_us() / 1000000;
+
+  // gather task information
+  if (xHandleIORead != NULL) {
+    taskStates.push_back(eTaskGetState(xHandleIORead));
   }
-
-  // I/O
-  if (debugger.IO_debugEnabled) {
-    PrintIODebug();
+  if (xHandleSerialRead != NULL) {
+    taskStates.push_back(eTaskGetState(xHandleSerialRead));
   }
-
-  // scheduler
-  if (debugger.scheduler_debugEnable) {
-    // inits
-    std::vector<eTaskState> taskStates;
-    std::vector<std::string> taskStatesStrings;
-    std::vector<int> taskRefreshRate;
-    int uptime = esp_rtc_get_time_us() / 1000000;
-
-    // gather task information
-    if (xHandleIORead != NULL) {
-      taskStates.push_back(eTaskGetState(xHandleIORead));
-    }
-    if (xHandleSerialRead != NULL) {
-      taskStates.push_back(eTaskGetState(xHandleSerialRead));
-    }
-    if (xHandleSerialWrite != NULL) {
+  if (xHandleSerialWrite != NULL) {
     taskStates.push_back(eTaskGetState(xHandleSerialWrite));
-    }
-    if (xHandleTwaiRead != NULL) {
-      taskStates.push_back(eTaskGetState(xHandleTwaiRead));
-    }
-
-    taskRefreshRate.push_back(debugger.ioReadTaskCount - debugger.ioReadTaskPreviousCount);
-    taskRefreshRate.push_back(debugger.serialReadTaskCount - debugger.serialReadTaskPreviousCount);
-    taskRefreshRate.push_back(debugger.serialWriteTaskCount - debugger.serialWriteTaskPreviousCount);
-    taskRefreshRate.push_back(debugger.twaiReadTaskCount - debugger.twaiReadTaskPreviousCount);
-
-    // make it usable
-    for (int i = 0; i < taskStates.size() - 1; ++i) {
-      switch (taskStates.at(i))
-      {
-      case eReady:
-        taskStatesStrings.push_back("RUNNING");        
-      break;
-
-      case eBlocked:
-        taskStatesStrings.push_back("BLOCKED");        
-      break;
-
-      case eSuspended:
-        taskStatesStrings.push_back("SUSPENDED");        
-      break;
-
-      case eDeleted:
-        taskStatesStrings.push_back("DELETED");        
-      break;
-      
-      default:
-        taskStatesStrings.push_back("ERROR");        
-        break;
-      }
-    }
-
-    // print it
-    Serial.printf("uptime: %d | read io:<%d Hz> (%d) | read serial:<%d Hz> (%d) | write serial:<%d Hz> (%d) | read twai:<%d Hz> (%d) \r",
-      uptime, taskRefreshRate.at(0), debugger.ioReadTaskCount, taskRefreshRate.at(1), debugger.serialReadTaskCount,
-      taskRefreshRate.at(2), debugger.serialWriteTaskCount, taskRefreshRate.at(3), debugger.twaiReadTaskCount);
-
-    // update counters
-    debugger.ioReadTaskPreviousCount = debugger.ioReadTaskCount;
-    debugger.twaiReadTaskPreviousCount = debugger.twaiReadTaskCount;
-    debugger.serialReadTaskPreviousCount = debugger.serialReadTaskCount;
-    debugger.serialWriteTaskPreviousCount = debugger.serialWriteTaskCount;
   }
+
+  taskRefreshRate.push_back(debugger.ioReadTaskCount - debugger.ioReadTaskPreviousCount);
+  taskRefreshRate.push_back(debugger.serialReadTaskCount - debugger.serialReadTaskPreviousCount);
+  taskRefreshRate.push_back(debugger.serialWriteTaskCount - debugger.serialWriteTaskPreviousCount);
+
+  // make it usable
+  for (int i = 0; i < taskStates.size() - 1; ++i) {
+    taskStatesStrings.push_back(TaskStateToString(taskStates.at(i)));        
+  }
+
+  // print it
+  Serial.printf("uptime: %d | read io:<%d Hz> (%d) | read serial:<%d Hz> (%d) | write serial:<%d Hz> (%d) \r",
+    uptime, taskRefreshRate.at(0), debugger.ioReadTaskCount, taskRefreshRate.at(1), debugger.serialReadTaskCount,
+    taskRefreshRate.at(2), debugger.serialWriteTaskCount);
+
+  // update counters
+  debugger.ioReadTaskPreviousCount = debugger.ioReadTaskCount;
+  debugger.serialReadTaskPreviousCount = debugger.serialReadTaskCount;
+  debugger.serialWriteTaskPreviousCount = debugger.serialWriteTaskCount;
 }
