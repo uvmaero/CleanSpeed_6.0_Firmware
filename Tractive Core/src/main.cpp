@@ -2,8 +2,8 @@
  * @file main.cpp
  * @author dom gasperini
  * @brief tractive core
- * @version 1.5
- * @date 2024-01-19
+ * @version 1.6
+ * @date 2024-01-22
  * 
  * @ref https://espressif-docs.readthedocs-hosted.com/projects/arduino-esp32/en/latest/libraries.html#apis      (api and hal docs)
  * @ref https://docs.espressif.com/projects/esp-idf/en/latest/esp32s3/_images/ESP32-S3_DevKitC-1_pinlayout.jpg  (pinout & overview)
@@ -62,13 +62,9 @@
 #define PRECHARGE_FLOOR                 0.8         // precentage of bus voltage rinehart should be at
 #define BUZZER_DURATION                 2000        // in milliseconds
 
-// TWAI
-#define TELEMETRY_TRACTIVE_1_ADDR       0x001
-#define TELEMETRY_TRACTIVE_2_ADDR       0x002
-#define TELEMETRY_SENSOR_ADDR           0x003       // telemetry board sensor data send address
-#define TELEMETRY_INPUTS_ADDR           0x004
-#define TELEMETRY_OUTPUTS_ADDR          0x005
+#define SERIAL_BAUD_RATE                9600        // baud rate
 
+// TWAI
 #define RINE_MOTOR_INFO_ADDR            0x0A5       // get motor information from Rinehart 
 #define RINE_VOLT_INFO_ADDR             0x0A7       // get rinehart electrical information
 #define RINE_BUS_INFO_ADDR              0x0AA       // get rinehart relay information 
@@ -79,6 +75,14 @@
 #define BMS_CELL_DATA_ADDR              0x6B2       // cell data
 
 // tasks
+#define IO_WRITE_REFRESH_RATE           5           // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define IO_READ_REFRESH_RATE            5           // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define TWAI_WRITE_REFRESH_RATE         10          // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define TWAI_READ_REFRESH_RATE          10          // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define PRECHARGE_REFRESH_RATE          250         // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define SERIAL_REFRESH_RATE             10          // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define DEBUG_REFRESH_RATE              1000        // measured in ticks (RTOS ticks interrupt at 1 kHz)
+
 #define TWAI_BLOCK_DELAY                1           // time to block to complete function call in FreeRTOS ticks (milliseconds)
 
 #define TASK_STACK_SIZE                 20000       // in bytes
@@ -130,12 +134,14 @@ Debugger debugger = {
   .twaiReadTaskCount = 0,
   .twaiWriteTaskCount = 0,
   .prechargeTaskCount = 0,
+  .serialTaskCount = 0,
 
   .ioReadTaskPreviousCount = 0,
   .ioWriteTaskPreviousCount = 0,
   .twaiReadTaskPreviousCount = 0,
   .twaiWriteTaskPreviousCount = 0,
   .prechargeTaskPreviousCount = 0,
+  .serialTaskPreviousCount = 0,
 };
 
 
@@ -263,6 +269,7 @@ void IOWriteTask(void* pvParameters);
 void TWAIReadTask(void* pvParameters);
 void TWAIWriteTask(void* pvParameters);
 void PrechargeTask(void* pvParameters);
+void SerialWriteTask(void* pvParameters);
 void DebugTask(void* pvParameters);
 
 // helpers
@@ -295,17 +302,23 @@ void setup() {
     vTaskDelay(3000);
   }
 
-  // ----------------------- initialize serial connection --------------------- //
-  Serial.begin(9600);
-  Serial.printf("\n\n|--- STARTING SETUP ---|\n\n");
-
   // setup managment struct
   struct setup
   {
     bool ioActive = false;
     bool twaiActive = false;
+    bool serialActive = false;
   };
   setup setup;
+
+  // ----------------------- initialize serial connection --------------------- //
+  Serial.begin(SERIAL_BAUD_RATE);
+  Serial.printf("\n\n|--- STARTING SETUP ---|\n\n");
+
+  Serial2.begin(SERIAL_BAUD_RATE, SERIAL_8N1, SERIAL_RX_PIN, SERIAL_TX_PIN);
+
+  Serial.printf("SERIAL INIT [ SUCCESS ]\n");
+  setup.serialActive = true;
   // -------------------------- initialize GPIO ------------------------------ //
   analogReadResolution(12);
   
@@ -401,6 +414,10 @@ void setup() {
     
     xTaskCreate(PrechargeTask, "Precharge-Update", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandlePrecharge);
 
+    if (setup.serialActive) {
+      xTaskCreate(SerialWriteTask, "Serial-Write", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleSerial);
+    }
+
     if (debugger.debugEnabled == true) {
       xTaskCreate(DebugTask, "Debugger", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleDebug);
     }
@@ -436,6 +453,11 @@ void setup() {
     Serial.printf("PRECHARGE TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandlePrecharge)));
   else
     Serial.printf("PRECHARGE TASK STATUS: DISABLED!\n");
+  
+  if (xHandleSerial != NULL) 
+    Serial.printf("SERIAL TASK STATUS %s\n", TaskStateToString(eTaskGetState(xHandleSerial)));
+  else
+    Serial.printf("SERIAL TASK STAUS: DISABLED!\n");
 
 
   // scheduler status
@@ -688,7 +710,7 @@ void IOReadTask(void* pvParameters)
     }
 
     // limit task refresh rate
-    vTaskDelay(5);
+    vTaskDelay(IO_READ_REFRESH_RATE);
   }
 }
 
@@ -770,7 +792,7 @@ void IOWriteTask(void* pvParameters)
     }
 
     // limit task refresh rate
-    vTaskDelay(5);
+    vTaskDelay(IO_WRITE_REFRESH_RATE);
   }
 }
 
@@ -844,6 +866,9 @@ void TWAIReadTask(void* pvParameters)
       // release mutex!
       xSemaphoreGive(xMutex);
     }
+
+    // limit refresh rate
+    vTaskDelay(TWAI_READ_REFRESH_RATE);
   }
 }
 
@@ -940,95 +965,12 @@ void TWAIWriteTask(void* pvParameters)
         break;
       }
 
-
-      // --- telemetry board messages --- // 
-      // telemetry tractive 1 message
-      twai_message_t telemetryTractive1Message;
-      telemetryTractive1Message.identifier = TELEMETRY_TRACTIVE_1_ADDR;
-      telemetryTractive1Message.flags = TWAI_MSG_FLAG_NONE;
-      telemetryTractive1Message.data_length_code = 8;
-
-      telemetryTractive1Message.data[0] = tractiveCoreData.tractive.readyToDrive;
-      telemetryTractive1Message.data[1] = tractiveCoreData.tractive.enableInverter;
-      telemetryTractive1Message.data[2] = tractiveCoreData.tractive.rinehartVoltage;
-      telemetryTractive1Message.data[3] = tractiveCoreData.tractive.commandedTorque;
-      telemetryTractive1Message.data[4] = tractiveCoreData.tractive.driveDirection;
-      telemetryTractive1Message.data[5] = tractiveCoreData.tractive.tractionControlEnable;
-      telemetryTractive1Message.data[6] = tractiveCoreData.tractive.tractionControlModifier;
-      telemetryTractive1Message.data[7] = tractiveCoreData.tractive.currentSpeed;
-
-      // telemetry tractive 2 message
-      twai_message_t telemetryTractive2Message;
-      telemetryTractive2Message.identifier = TELEMETRY_TRACTIVE_1_ADDR;
-      telemetryTractive2Message.flags = TWAI_MSG_FLAG_NONE;
-      telemetryTractive2Message.data_length_code = 8;
-
-      telemetryTractive2Message.data[0] = tractiveCoreData.tractive.coastRegen;
-      telemetryTractive2Message.data[1] = tractiveCoreData.tractive.brakeRegen;
-      telemetryTractive2Message.data[2] = PrechargeStateToNumber();             // need to covert state to usable value
-      telemetryTractive2Message.data[3] = DriveModeToNumber();                  // need to covert state to usable value
-      telemetryTractive2Message.data[4] = 0x00;
-      telemetryTractive2Message.data[5] = 0x00;
-      telemetryTractive2Message.data[6] = 0x00;
-      telemetryTractive2Message.data[7] = 0x00;
-
-      // telemetry sensors message
-      twai_message_t telemetrySensorMessage;
-      telemetrySensorMessage.identifier = TELEMETRY_TRACTIVE_1_ADDR;
-      telemetrySensorMessage.flags = TWAI_MSG_FLAG_NONE;
-      telemetrySensorMessage.data_length_code = 8;
-
-      telemetrySensorMessage.data[0] = tractiveCoreData.sensors.imdFault;
-      telemetrySensorMessage.data[1] = tractiveCoreData.sensors.bmsFault;
-      telemetrySensorMessage.data[2] = tractiveCoreData.sensors.vicoreFault;
-      telemetrySensorMessage.data[3] = tractiveCoreData.sensors.coolingTempIn;
-      telemetrySensorMessage.data[4] = tractiveCoreData.sensors.coolingTempOut;
-      telemetrySensorMessage.data[5] = tractiveCoreData.sensors.frontWheelsSpeed;
-      telemetrySensorMessage.data[6] = tractiveCoreData.sensors.brWheelSpeed;
-      telemetrySensorMessage.data[7] = tractiveCoreData.sensors.blWheelSpeed;
-
-      // telemetry inputs message
-      twai_message_t telemetryInputsMessage;
-      telemetryInputsMessage.identifier = TELEMETRY_TRACTIVE_1_ADDR;
-      telemetryInputsMessage.flags = TWAI_MSG_FLAG_NONE;
-      telemetryInputsMessage.data_length_code = 8;
-
-      telemetryInputsMessage.data[0] = tractiveCoreData.inputs.pedal0;
-      telemetryInputsMessage.data[1] = tractiveCoreData.inputs.pedal1;
-      telemetryInputsMessage.data[2] = tractiveCoreData.inputs.frontBrake;
-      telemetryInputsMessage.data[3] = tractiveCoreData.inputs.rearBrake;
-      telemetryInputsMessage.data[4] = 0x00;
-      telemetryInputsMessage.data[5] = 0x00;
-      telemetryInputsMessage.data[6] = 0x00;
-      telemetryInputsMessage.data[7] = 0x00;
-
-      // telemetry outputs message
-      twai_message_t telemetryOutputsMessage;
-      telemetryOutputsMessage.identifier = TELEMETRY_TRACTIVE_1_ADDR;
-      telemetryOutputsMessage.flags = TWAI_MSG_FLAG_NONE;
-      telemetryOutputsMessage.data_length_code = 8;
-
-      telemetryOutputsMessage.data[0] = tractiveCoreData.outputs.vicoreEnable;
-      telemetryOutputsMessage.data[1] = tractiveCoreData.outputs.brakeLightEnable;
-      telemetryOutputsMessage.data[2] = tractiveCoreData.outputs.fansEnable;
-      telemetryOutputsMessage.data[3] = tractiveCoreData.outputs.buzzerEnable;
-      telemetryOutputsMessage.data[4] = 0x00;
-      telemetryOutputsMessage.data[5] = 0x00;
-      telemetryOutputsMessage.data[6] = 0x00;
-      telemetryOutputsMessage.data[7] = 0x00;
-
-
       // release mutex!
       xSemaphoreGive(xMutex);
 
       // queue all messages for transmission
       esp_err_t rinehartCtrlResult = twai_transmit(&rinehartMessage, pdMS_TO_TICKS(TWAI_BLOCK_DELAY));
       esp_err_t prechargeCtrlMessageResult = twai_transmit(&prechargeCtrlMessage, pdMS_TO_TICKS(TWAI_BLOCK_DELAY));
-      esp_err_t telemetryTractive1MessageResult = twai_transmit(&telemetryTractive1Message, pdMS_TO_TICKS(TWAI_BLOCK_DELAY));
-      esp_err_t telemetryTractive2MessageResult = twai_transmit(&telemetryTractive2Message, pdMS_TO_TICKS(TWAI_BLOCK_DELAY));
-      esp_err_t telemetrySensorMessageResult = twai_transmit(&telemetrySensorMessage, pdMS_TO_TICKS(TWAI_BLOCK_DELAY));
-      esp_err_t telemetryInputsMessageMessageResult = twai_transmit(&telemetryInputsMessage, pdMS_TO_TICKS(TWAI_BLOCK_DELAY));
-      esp_err_t telemetryOutputsMessageMessageResult = twai_transmit(&telemetryInputsMessage, pdMS_TO_TICKS(TWAI_BLOCK_DELAY));
 
 
       // debugging
@@ -1049,6 +991,9 @@ void TWAIWriteTask(void* pvParameters)
         debugger.twaiWriteTaskCount++;
       }
     }
+
+    // limit task refresh rate
+    vTaskDelay(TWAI_WRITE_REFRESH_RATE);
   }
 }
 
@@ -1148,7 +1093,35 @@ void PrechargeTask(void* pvParameters)
     }
 
     // limit task refresh rate
-    vTaskDelay(250);
+    vTaskDelay(PRECHARGE_REFRESH_RATE);
+  }
+}
+
+
+/**
+ * @brief writes tractive core data to telemetry core
+*/
+void SerialWriteTask(void* pvParameters)
+{
+  for (;;)
+  {
+    // check for mutex availability
+    if (xSemaphoreTake(xMutex, (TickType_t) 10) == pdTRUE)
+    {
+      // write to serial bus
+      // Serial.write((uint8_t *) &tractiveCoreData, sizeof(tractiveCoreData));
+
+      // release mutex!
+      xSemaphoreGive(xMutex);
+    }
+
+    // debugging
+    if (debugger.debugEnabled) {
+      debugger.serialTaskCount++;
+    }
+
+    // limit task refresh rate
+    vTaskDelay(SERIAL_REFRESH_RATE);
   }
 }
 
@@ -1175,7 +1148,7 @@ void DebugTask(void* pvParameters) {
     }
 
     // limit refresh rate
-    vTaskDelay(DEBUG_DELAY);
+    vTaskDelay(DEBUG_REFRESH_RATE);
   }
 }
 
@@ -1611,12 +1584,16 @@ void PrintScheduler() {
   if (xHandlePrecharge != NULL) {
     taskStates.push_back(eTaskGetState(xHandlePrecharge));
   }
+  if (xHandleSerial != NULL) {
+    taskStates.push_back(eTaskGetState(xHandleSerial));
+  }
 
   taskRefreshRate.push_back(debugger.ioReadTaskCount - debugger.ioReadTaskPreviousCount);
   taskRefreshRate.push_back(debugger.ioWriteTaskCount - debugger.ioWriteTaskPreviousCount);
   taskRefreshRate.push_back(debugger.twaiReadTaskCount - debugger.twaiReadTaskPreviousCount);
   taskRefreshRate.push_back(debugger.twaiWriteTaskCount - debugger.twaiWriteTaskPreviousCount);
   taskRefreshRate.push_back(debugger.prechargeTaskCount - debugger.prechargeTaskPreviousCount);
+  taskRefreshRate.push_back(debugger.serialTaskCount - debugger.serialTaskPreviousCount);
 
   // make it usable
   for (int i = 0; i < taskStates.size() - 1; ++i) {
@@ -1628,9 +1605,10 @@ void PrintScheduler() {
   //   taskStatesStrings.at(0), debugger.ioReadTaskCount, taskRefreshRate.at(0), taskStatesStrings.at(1), debugger.ioWriteTaskCount, taskRefreshRate.at(1), taskStatesStrings.at(2), 
   //   debugger.twaiReadTaskCount, taskRefreshRate.at(2), taskStatesStrings.at(3), debugger.twaiWriteTaskCount, taskRefreshRate.at(3), taskStatesStrings.at(4), debugger.prechargeTaskCount, taskRefreshRate.at(4));
   
-  Serial.printf("uptime: %d | read io:<%d Hz> (%d) | write io:<%d Hz> (%d) | read twai:<%d Hz> (%d) | write twai:<%d Hz> (%d) | precharge:<%d Hz> (%d) \r",
+  Serial.printf("uptime: %d | read io:<%d Hz> (%d) | write io:<%d Hz> (%d) | read twai:<%d Hz> (%d) | write twai:<%d Hz> (%d) | precharge:<%d Hz> (%d) | serial:<%d Hz> (%d) \r",
     uptime, taskRefreshRate.at(0), debugger.ioReadTaskCount, taskRefreshRate.at(1), debugger.ioWriteTaskCount,
-    taskRefreshRate.at(2), debugger.twaiReadTaskCount, taskRefreshRate.at(3), debugger.twaiWriteTaskCount, taskRefreshRate.at(4), debugger.prechargeTaskCount);
+    taskRefreshRate.at(2), debugger.twaiReadTaskCount, taskRefreshRate.at(3), debugger.twaiWriteTaskCount, taskRefreshRate.at(4), debugger.prechargeTaskCount,
+    taskRefreshRate.at(5), debugger.serialTaskCount);
 
   // update counters
   debugger.ioReadTaskPreviousCount = debugger.ioReadTaskCount;
@@ -1638,4 +1616,5 @@ void PrintScheduler() {
   debugger.twaiReadTaskPreviousCount = debugger.twaiReadTaskCount;
   debugger.twaiWriteTaskPreviousCount = debugger.twaiWriteTaskCount;
   debugger.prechargeTaskPreviousCount = debugger.prechargeTaskCount;
+  debugger.serialTaskPreviousCount = debugger.serialTaskCount;
 }

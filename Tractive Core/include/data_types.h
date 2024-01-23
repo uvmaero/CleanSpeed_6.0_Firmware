@@ -2,8 +2,8 @@
  * @file dataTypes.h
  * @author Dominic Gasperini
  * @brief all of the unique data types used to manage the state of the car
- * @version 1.5
- * @date 2024-01-19
+ * @version 1.6
+ * @date 2024-01-22
  */
 
 
@@ -173,12 +173,14 @@ typedef struct Debugger
     int twaiReadTaskCount;
     int twaiWriteTaskCount;
     int prechargeTaskCount;
+    int serialTaskCount;
 
     int ioReadTaskPreviousCount;
     int ioWriteTaskPreviousCount;
     int twaiReadTaskPreviousCount;
     int twaiWriteTaskPreviousCount;
     int prechargeTaskPreviousCount;
+    int serialTaskPreviousCount;
 } Debugger;
 
 

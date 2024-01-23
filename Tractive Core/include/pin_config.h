@@ -2,8 +2,8 @@
  * @file pinConfig.h
  * @author dominic gasperini 
  * @brief this file holds the pin layout for the board I/O
- * @version 1.5
- * @date 2024-01-19
+ * @version 1.6
+ * @date 2024-01-22
  */
 
 
@@ -68,6 +68,11 @@ esp_pm_config_esp32s3_t power_configuration {
 // TWAI
 #define TWAI_RX_PIN                         42
 #define TWAI_TX_PIN                         41
+
+
+// Serial
+#define SERIAL_RX_PIN                       48
+#define SERIAL_TX_PIN                       36
 
 
 // Outputs
