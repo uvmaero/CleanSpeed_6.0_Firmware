@@ -89,8 +89,6 @@
 
 // debug
 #define ENABLE_DEBUG                    true       // master debug message control
-#define DEBUG_DELAY                     1000       // delay in debug task
-
 
 
 /*
@@ -461,7 +459,7 @@ void setup() {
 
 
   // scheduler status
-  if (xTaskGetSchedulerState() == 2) {
+  if (xTaskGetSchedulerState() == taskSCHEDULER_RUNNING) {
     Serial.printf("\nScheduler Status: RUNNING\n");
 
     // clock frequency
@@ -491,6 +489,7 @@ void setup() {
 void FrontWheelSpeedISR() 
 {
   portENTER_CRITICAL_ISR(&timerMux);
+  xSemaphoreTakeFromISR(xMutex, NULL);
 
   // increment pass counter
   tractiveCoreData.sensors.frontWheelSpeedCount++;
@@ -510,6 +509,7 @@ void FrontWheelSpeedISR()
     tractiveCoreData.sensors.frontWheelSpeedCount = 0;
   }
 
+  xSemaphoreGiveFromISR(xMutex, NULL);
   portEXIT_CRITICAL_ISR(&timerMux);
 
   return;
@@ -522,6 +522,7 @@ void FrontWheelSpeedISR()
 void BRWheelSpeedISR() 
 {
   portENTER_CRITICAL_ISR(&timerMux);
+  xSemaphoreTakeFromISR(xMutex, NULL);
 
   // increment pass counter
   tractiveCoreData.sensors.brWheelSpeedCount++;
@@ -541,6 +542,7 @@ void BRWheelSpeedISR()
     tractiveCoreData.sensors.brWheelSpeedCount = 0;
   }
 
+  xSemaphoreGiveFromISR(xMutex, NULL);
   portEXIT_CRITICAL_ISR(&timerMux);
 
   return;
@@ -553,6 +555,7 @@ void BRWheelSpeedISR()
 void BLWheelSpeedISR() 
 {
   portENTER_CRITICAL_ISR(&timerMux);
+  xSemaphoreTakeFromISR(xMutex, NULL);
 
   // increment pass counter
   tractiveCoreData.sensors.blWheelSpeedCount++;
@@ -572,6 +575,7 @@ void BLWheelSpeedISR()
     tractiveCoreData.sensors.blWheelSpeedCount = 0;
   }
 
+  xSemaphoreGiveFromISR(xMutex, NULL);
   portEXIT_CRITICAL_ISR(&timerMux);
 
   return;
@@ -768,6 +772,7 @@ void IOWriteTask(void* pvParameters)
       else {
         digitalWrite(IMD_FAULT_LED_PIN, LOW);
       }
+
 
       // drive mode led
       // TODO: implement this doing some rgb led stuff
