@@ -43,7 +43,7 @@ esp_pm_config_esp32s3_t power_configuration {
 #define COOLING_OUT_TEMP_PIN                2
 #define BMS_FAULT_PIN                       16
 #define IMD_FAULT_PIN                       15
-#define VICORE_FAULT_PIN                    13
+#define VICORE_FAULT_PIN                    12
 
 #define FR_HALL_EFFECT_PIN                  47
 #define FL_HALL_EFFECT_PIN                  21
@@ -57,7 +57,7 @@ esp_pm_config_esp32s3_t power_configuration {
 #define FRONT_BRAKE_PIN                     6
 #define REAR_BRAKE_PIN                      7
 
-#define COAST_REGEN_PIN                     14
+#define COAST_REGEN_PIN                     17
 #define BRAKE_REGEN_PIN                     18
 
 #define START_BUTTON_PIN                    35
@@ -71,8 +71,8 @@ esp_pm_config_esp32s3_t power_configuration {
 
 
 // Serial
-#define SERIAL_RX_PIN                       48
-#define SERIAL_TX_PIN                       36
+#define SERIAL_RX_PIN                       44
+#define SERIAL_TX_PIN                       43
 
 
 // Outputs
@@ -82,9 +82,9 @@ esp_pm_config_esp32s3_t power_configuration {
 #define BMS_FAULT_LED_PIN                   10     
 #define IMD_FAULT_LED_PIN                   9
 
-#define VICORE_ENABLE_PIN                   12
+#define VICORE_ENABLE_PIN                   13
 
-#define BUZZER_PIN                          17
+#define BUZZER_PIN                          14
 
 #define BRAKE_LIGHT_PIN                     38
 
