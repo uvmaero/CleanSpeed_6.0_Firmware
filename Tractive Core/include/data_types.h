@@ -173,14 +173,14 @@ typedef struct Debugger
     int twaiReadTaskCount;
     int twaiWriteTaskCount;
     int prechargeTaskCount;
-    int serialTaskCount;
+    int telemetryUpdateTaskCount;
 
     int ioReadTaskPreviousCount;
     int ioWriteTaskPreviousCount;
     int twaiReadTaskPreviousCount;
     int twaiWriteTaskPreviousCount;
     int prechargeTaskPreviousCount;
-    int serialTaskPreviousCount;
+    int telemetryUpdateTaskPreviousCount;
 } Debugger;
 
 

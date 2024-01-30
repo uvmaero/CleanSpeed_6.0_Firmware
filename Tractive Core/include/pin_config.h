@@ -60,7 +60,7 @@ esp_pm_config_esp32s3_t power_configuration {
 #define COAST_REGEN_PIN                     17
 #define BRAKE_REGEN_PIN                     18
 
-#define START_BUTTON_PIN                    35
+#define START_BUTTON_PIN                    48
 #define DRIVE_MODE_BUTTON_PIN               40
 #define TRACTION_CONTROL_SWITCH_PIN         8
 
@@ -70,9 +70,9 @@ esp_pm_config_esp32s3_t power_configuration {
 #define TWAI_TX_PIN                         41
 
 
-// Serial
-#define SERIAL_RX_PIN                       44
-#define SERIAL_TX_PIN                       43
+// Telemetry Connection
+#define I2C_TX_PIN                          36
+#define I2C_RX_PIN                          35
 
 
 // Outputs

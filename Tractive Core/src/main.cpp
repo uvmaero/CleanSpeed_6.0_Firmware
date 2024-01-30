@@ -19,6 +19,7 @@
 
 
 #include <Arduino.h>
+#include <Wire.h>
 #include "driver/twai.h"
 #include "rtc.h"
 #include "rtc_clk_common.h"
@@ -80,7 +81,7 @@
 #define TWAI_WRITE_REFRESH_RATE         8           // measured in ticks (RTOS ticks interrupt at 1 kHz)
 #define TWAI_READ_REFRESH_RATE          8           // measured in ticks (RTOS ticks interrupt at 1 kHz)
 #define PRECHARGE_REFRESH_RATE          225         // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define SERIAL_REFRESH_RATE             95          // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define TELEMETRY_UPDATE_REFRESH_RATE   95          // measured in ticks (RTOS ticks interrupt at 1 kHz)
 #define DEBUG_REFRESH_RATE              1000        // measured in ticks (RTOS ticks interrupt at 1 kHz)
 
 #define TWAI_BLOCK_DELAY                1           // time to block to complete function call in FreeRTOS ticks
@@ -132,14 +133,14 @@ Debugger debugger = {
   .twaiReadTaskCount = 0,
   .twaiWriteTaskCount = 0,
   .prechargeTaskCount = 0,
-  .serialTaskCount = 0,
+  .telemetryUpdateTaskCount = 0,
 
   .ioReadTaskPreviousCount = 0,
   .ioWriteTaskPreviousCount = 0,
   .twaiReadTaskPreviousCount = 0,
   .twaiWriteTaskPreviousCount = 0,
   .prechargeTaskPreviousCount = 0,
-  .serialTaskPreviousCount = 0,
+  .telemetryUpdateTaskPreviousCount = 0,
 };
 
 
@@ -243,7 +244,7 @@ TaskHandle_t xHandleTWAIRead = NULL;
 TaskHandle_t xHandleTWAIWrite = NULL;
 
 TaskHandle_t xHandlePrecharge = NULL;
-TaskHandle_t xHandleSerial = NULL;
+TaskHandle_t xHandleTelemetryUpdate = NULL;
 
 TaskHandle_t xHandleDebug = NULL;
 
@@ -267,7 +268,7 @@ void IOWriteTask(void* pvParameters);
 void TWAIReadTask(void* pvParameters);
 void TWAIWriteTask(void* pvParameters);
 void PrechargeTask(void* pvParameters);
-void SerialWriteTask(void* pvParameters);
+void TelemetryUpdateTask(void* pvParameters);
 void DebugTask(void* pvParameters);
 
 // helpers
@@ -305,7 +306,7 @@ void setup() {
   {
     bool ioActive = false;
     bool twaiActive = false;
-    bool serialActive = false;
+    bool i2cActive = false;
   };
   setup setup;
 
@@ -313,10 +314,17 @@ void setup() {
   Serial.begin(SERIAL_BAUD_RATE);
   Serial.printf("\n\n|--- STARTING SETUP ---|\n\n");
 
-  Serial2.begin(SERIAL_BAUD_RATE, SERIAL_8N1, SERIAL_RX_PIN, SERIAL_TX_PIN);
+  // ----------------------- initialize I2C connection --------------------- //
 
-  Serial.printf("SERIAL INIT [ SUCCESS ]\n");
-  setup.serialActive = true;
+  if (Wire.begin(I2C_RX_PIN, I2C_TX_PIN) == true) {
+    Wire.setBufferSize(255);
+    
+    Serial.printf("TELEMETRY CONNECTION INIT [ SUCCESS ]\n");
+    setup.i2cActive = true;
+  }
+  else {
+    Serial.printf("TELEMETRY CONNECTION INIT [ FAILED ]\n");
+  }
   // -------------------------- initialize GPIO ------------------------------ //
   analogReadResolution(12);
   
@@ -412,8 +420,8 @@ void setup() {
     
     xTaskCreate(PrechargeTask, "Precharge-Update", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandlePrecharge);
 
-    if (setup.serialActive) {
-      xTaskCreate(SerialWriteTask, "Serial-Write", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleSerial);
+    if (setup.i2cActive) {
+      xTaskCreate(TelemetryUpdateTask, "Telemetry-Update", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleTelemetryUpdate);
     }
 
     if (debugger.debugEnabled == true) {
@@ -452,10 +460,10 @@ void setup() {
   else
     Serial.printf("PRECHARGE TASK STATUS: DISABLED!\n");
   
-  if (xHandleSerial != NULL) 
-    Serial.printf("SERIAL TASK STATUS %s\n", TaskStateToString(eTaskGetState(xHandleSerial)));
+  if (xHandleTelemetryUpdate != NULL) 
+    Serial.printf("TELEMETRY UPDATE TASK STATUS %s\n", TaskStateToString(eTaskGetState(xHandleTelemetryUpdate)));
   else
-    Serial.printf("SERIAL TASK STAUS: DISABLED!\n");
+    Serial.printf("TELEMETRY UPDATE TASK STAUS: DISABLED!\n");
 
 
   // scheduler status
@@ -1106,15 +1114,15 @@ void PrechargeTask(void* pvParameters)
 /**
  * @brief writes tractive core data to telemetry core
 */
-void SerialWriteTask(void* pvParameters)
+void TelemetryUpdateTask(void* pvParameters)
 {
   for (;;)
   {
     // check for mutex availability
     if (xSemaphoreTake(xMutex, (TickType_t) 10) == pdTRUE)
     {
-      // write to serial bus
-      // Serial.write((uint8_t *) &tractiveCoreData, sizeof(tractiveCoreData));
+      // write to i2c bus
+      Wire.write((uint8_t *) &tractiveCoreData, sizeof(tractiveCoreData));
 
       // release mutex!
       xSemaphoreGive(xMutex);
@@ -1122,11 +1130,11 @@ void SerialWriteTask(void* pvParameters)
 
     // debugging
     if (debugger.debugEnabled) {
-      debugger.serialTaskCount++;
+      debugger.telemetryUpdateTaskCount++;
     }
 
     // limit task refresh rate
-    vTaskDelay(SERIAL_REFRESH_RATE);
+    vTaskDelay(TELEMETRY_UPDATE_REFRESH_RATE);
   }
 }
 
@@ -1589,8 +1597,8 @@ void PrintScheduler() {
   if (xHandlePrecharge != NULL) {
     taskStates.push_back(eTaskGetState(xHandlePrecharge));
   }
-  if (xHandleSerial != NULL) {
-    taskStates.push_back(eTaskGetState(xHandleSerial));
+  if (xHandleTelemetryUpdate != NULL) {
+    taskStates.push_back(eTaskGetState(xHandleTelemetryUpdate));
   }
 
   taskRefreshRate.push_back(debugger.ioReadTaskCount - debugger.ioReadTaskPreviousCount);
@@ -1598,7 +1606,7 @@ void PrintScheduler() {
   taskRefreshRate.push_back(debugger.twaiReadTaskCount - debugger.twaiReadTaskPreviousCount);
   taskRefreshRate.push_back(debugger.twaiWriteTaskCount - debugger.twaiWriteTaskPreviousCount);
   taskRefreshRate.push_back(debugger.prechargeTaskCount - debugger.prechargeTaskPreviousCount);
-  taskRefreshRate.push_back(debugger.serialTaskCount - debugger.serialTaskPreviousCount);
+  taskRefreshRate.push_back(debugger.telemetryUpdateTaskCount - debugger.telemetryUpdateTaskPreviousCount);
 
   // make it usable
   for (int i = 0; i < taskStates.size() - 1; ++i) {
@@ -1610,10 +1618,10 @@ void PrintScheduler() {
   //   taskStatesStrings.at(0), debugger.ioReadTaskCount, taskRefreshRate.at(0), taskStatesStrings.at(1), debugger.ioWriteTaskCount, taskRefreshRate.at(1), taskStatesStrings.at(2), 
   //   debugger.twaiReadTaskCount, taskRefreshRate.at(2), taskStatesStrings.at(3), debugger.twaiWriteTaskCount, taskRefreshRate.at(3), taskStatesStrings.at(4), debugger.prechargeTaskCount, taskRefreshRate.at(4));
   
-  Serial.printf("uptime: %d | read io:<%d Hz> (%d) | write io:<%d Hz> (%d) | read twai:<%d Hz> (%d) | write twai:<%d Hz> (%d) | precharge:<%d Hz> (%d) | serial:<%d Hz> (%d) \r",
+  Serial.printf("uptime: %d | read io:<%d Hz> (%d) | write io:<%d Hz> (%d) | read twai:<%d Hz> (%d) | write twai:<%d Hz> (%d) | precharge:<%d Hz> (%d) | telemetry update:<%d Hz> (%d) \r",
     uptime, taskRefreshRate.at(0), debugger.ioReadTaskCount, taskRefreshRate.at(1), debugger.ioWriteTaskCount,
     taskRefreshRate.at(2), debugger.twaiReadTaskCount, taskRefreshRate.at(3), debugger.twaiWriteTaskCount, taskRefreshRate.at(4), debugger.prechargeTaskCount,
-    taskRefreshRate.at(5), debugger.serialTaskCount);
+    taskRefreshRate.at(5), debugger.telemetryUpdateTaskCount);
 
   // update counters
   debugger.ioReadTaskPreviousCount = debugger.ioReadTaskCount;
@@ -1621,5 +1629,5 @@ void PrintScheduler() {
   debugger.twaiReadTaskPreviousCount = debugger.twaiReadTaskCount;
   debugger.twaiWriteTaskPreviousCount = debugger.twaiWriteTaskCount;
   debugger.prechargeTaskPreviousCount = debugger.prechargeTaskCount;
-  debugger.serialTaskPreviousCount = debugger.serialTaskCount;
+  debugger.telemetryUpdateTaskPreviousCount = debugger.telemetryUpdateTaskCount;
 }
