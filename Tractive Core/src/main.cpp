@@ -81,7 +81,7 @@
 #define TWAI_WRITE_REFRESH_RATE         8           // measured in ticks (RTOS ticks interrupt at 1 kHz)
 #define TWAI_READ_REFRESH_RATE          8           // measured in ticks (RTOS ticks interrupt at 1 kHz)
 #define PRECHARGE_REFRESH_RATE          225         // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define TELEMETRY_UPDATE_REFRESH_RATE   95          // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define TELEMETRY_UPDATE_REFRESH_RATE   9          // measured in ticks (RTOS ticks interrupt at 1 kHz)
 #define DEBUG_REFRESH_RATE              1000        // measured in ticks (RTOS ticks interrupt at 1 kHz)
 
 #define TWAI_BLOCK_DELAY                1           // time to block to complete function call in FreeRTOS ticks
@@ -414,7 +414,7 @@ void setup() {
     }
 
     if (setup.twaiActive) {
-      // xTaskCreate(TWAIReadTask, "Read-TWAI", TASK_STACK_SIZE, NULL, 1, &xHandleTWAIRead, 1);
+      xTaskCreatePinnedToCore(TWAIReadTask, "Read-TWAI", TASK_STACK_SIZE, NULL, 1, &xHandleTWAIRead, 1);
       xTaskCreatePinnedToCore(TWAIWriteTask, "Write-TWAI", TASK_STACK_SIZE, NULL, 1, &xHandleTWAIWrite, 1);
     }
     
@@ -461,7 +461,7 @@ void setup() {
     Serial.printf("PRECHARGE TASK STATUS: DISABLED!\n");
   
   if (xHandleTelemetryUpdate != NULL) 
-    Serial.printf("TELEMETRY UPDATE TASK STATUS %s\n", TaskStateToString(eTaskGetState(xHandleTelemetryUpdate)));
+    Serial.printf("TELEMETRY UPDATE TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandleTelemetryUpdate)));
   else
     Serial.printf("TELEMETRY UPDATE TASK STAUS: DISABLED!\n");
 
@@ -878,6 +878,13 @@ void TWAIReadTask(void* pvParameters)
 
       // release mutex!
       xSemaphoreGive(xMutex);
+    }
+
+
+    // debugging
+    if (debugger.debugEnabled) {
+      // scheduler counter update
+      debugger.twaiReadTaskCount++;
     }
 
     // limit refresh rate
