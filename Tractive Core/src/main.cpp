@@ -63,7 +63,9 @@
 #define PRECHARGE_FLOOR                 0.8         // precentage of bus voltage rinehart should be at
 #define BUZZER_DURATION                 2000        // in milliseconds
 
+#define TELEMETRY_CORE_I2C_ADDR         0x10        // address in hex
 #define SERIAL_BAUD_RATE                9600        // baud rate
+#define I2C_FREQUENCY                   100000      // frequency of bus
 
 // TWAI
 #define RINE_MOTOR_INFO_ADDR            0x0A5       // get motor information from Rinehart 
@@ -316,11 +318,15 @@ void setup() {
 
   // ----------------------- initialize I2C connection --------------------- //
 
-  if (Wire.begin(I2C_RX_PIN, I2C_TX_PIN) == true) {
+  if (Wire.begin(I2C_RX_PIN, I2C_TX_PIN, I2C_FREQUENCY) == true) {
     Wire.setBufferSize(255);
-    
-    Serial.printf("TELEMETRY CONNECTION INIT [ SUCCESS ]\n");
-    setup.i2cActive = true;
+
+    // test for telemetry connection
+    Wire.beginTransmission(TELEMETRY_CORE_I2C_ADDR);
+    if (Wire.endTransmission() == 0) {
+      Serial.printf("TELEMETRY CONNECTION INIT [ SUCCESS ]\n");
+      setup.i2cActive = true;
+    }
   }
   else {
     Serial.printf("TELEMETRY CONNECTION INIT [ FAILED ]\n");
@@ -1129,7 +1135,9 @@ void TelemetryUpdateTask(void* pvParameters)
     if (xSemaphoreTake(xMutex, (TickType_t) 10) == pdTRUE)
     {
       // write to i2c bus
+      Wire.beginTransmission(TELEMETRY_CORE_I2C_ADDR);
       Wire.write((uint8_t *) &tractiveCoreData, sizeof(tractiveCoreData));
+      Wire.endTransmission();
 
       // release mutex!
       xSemaphoreGive(xMutex);

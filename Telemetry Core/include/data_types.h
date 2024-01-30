@@ -222,11 +222,13 @@ typedef struct Debugger
     int ioReadTaskCount;
     int serialReadTaskCount;
     int serialWriteTaskCount;
+    int tractiveReadTaskCount;
     int twaiReadTaskCount;
 
     int ioReadTaskPreviousCount;
     int serialReadTaskPreviousCount;
     int serialWriteTaskPreviousCount;
+    int tractiveReadTaskPreviousCount;
     int twaiReadTaskPreviousCount;
 } Debugger;
 

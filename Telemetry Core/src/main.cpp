@@ -19,6 +19,7 @@
 
 
 #include <Arduino.h>
+#include <Wire.h>
 #include "driver/twai.h"
 #include "rtc.h"
 #include "rtc_clk_common.h"
@@ -40,15 +41,15 @@
 #define SERIAL_WRITE_REFRESH_RATE       9           // measured in ticks (RTOS ticks interrupt at 1 kHz)
 #define SERIAL_READ_REFRESH_RATE        9           // measured in ticks (RTOS ticks interrupt at 1 kHz)
 #define DEBUG_REFRESH_RATE              1000        // measured in ticks (RTOS ticks interrupt at 1 kHz)
-
-#define TWAI_BLOCK_DELAY                1           // time to block to complete function call in FreeRTOS ticks
+#define TRACTIVE_READ_REFRESH_RATE      9           // measured in ticks (RTOS ticks interrupt at 1 kHz)
 
 #define TASK_STACK_SIZE                 20000       // in bytes
 
 
 // general
 #define SERIAL_BAUD_RATE                9600        // baud rate
-
+#define TELEMETRY_CORE_I2C_ADDR         0x10        // address for i2c in hex
+#define I2C_FREQUENCY                   100000      // frequency of bus
 
 // debug
 #define ENABLE_DEBUG                    true       // master debug message control
@@ -239,6 +240,7 @@ SemaphoreHandle_t xMutex = NULL;
 TaskHandle_t xHandleIORead = NULL;
 TaskHandle_t xHandleSerialRead = NULL;
 TaskHandle_t xHandleSerialWrite = NULL;
+TaskHandle_t xHandleTractiveRead = NULL;
 
 TaskHandle_t xHandleDebug = NULL;
 
@@ -267,6 +269,7 @@ portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 void IOReadTask(void* pvParameters);
 void SerialReadTask(void* pvParameters);
 void SerialWriteTask(void* pvParameters);
+void TractiveReadTask(void* pvParameters);
 void DebugTask(void* pvParameters);
 
 
@@ -301,17 +304,29 @@ void setup() {
     bool rpiComActive = false;
     bool loraActive = false;
     bool serialActive = false;
+    bool i2cActive = false;
   };
   Setup setup;
 
   // ----------------------- initialize serial connection --------------------- //
   Serial.begin(9600);
   Serial.printf("\n\n|--- STARTING SETUP ---|\n\n");
+  // -------------------------------------------------------------------------- //
 
-  Serial2.begin(SERIAL_BAUD_RATE, SERIAL_8N1, SERIAL_TRACTIVE_RX_PIN, SERIAL_TRACTIVE_TX_PIN);
 
-  Serial.printf("SERIAL INIT [ SUCCESS ]\n");
-  setup.serialActive = true;
+  // ----------------------- initialize i2c connection ----------------------- //
+
+  if (Wire.begin(TELEMETRY_CORE_I2C_ADDR, I2C_RX_PIN, I2C_TX_PIN, 100000) == true) {
+    Wire.setBufferSize(255);    // change the buffer size to fit the data
+
+    Serial.printf("TRACTIVE CONNECTION INIT [ SUCCESS ]\n");
+    setup.i2cActive = true;
+  }
+  else {
+    Serial.printf("TRACTIVE CONNECTION INIT [ FAILED ]\n");
+  }
+  // -------------------------------------------------------------------------- //
+
 
   // -------------------------- initialize GPIO ------------------------------ //
   analogReadResolution(12);
@@ -351,6 +366,7 @@ void setup() {
 
   Serial.printf("RPi INIT [ SUCCESS ]\n");
   setup.rpiComActive = true;
+  setup.serialActive = true;
   // -------------------------------------------------------------------------- //
 
 
@@ -391,6 +407,10 @@ void setup() {
       xTaskCreatePinnedToCore(IOReadTask, "IO-Read", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleIORead, 0);
     }
 
+    if (setup.i2cActive) {
+      xTaskCreatePinnedToCore(TractiveReadTask, "Tractive-Read", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleTractiveRead, 0);
+    }
+
     if (setup.rpiComActive && setup.gpsActive && setup.imuActive && setup.loraActive && setup.serialActive) {
       xTaskCreatePinnedToCore(SerialReadTask, "Serial-Read", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleSerialRead, 1);
       xTaskCreatePinnedToCore(SerialWriteTask, "Serial-Write", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleSerialWrite, 1);
@@ -412,6 +432,11 @@ void setup() {
   else 
     Serial.printf("I/O READ TASK STATUS: DISABLED!\n");
   
+  if (xHandleTractiveRead != NULL)
+    Serial.printf("TRACTIVE READ TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandleTractiveRead)));
+  else 
+    Serial.printf("TRACTIVE READ TASK STATUS: DISABLED!\n");
+
   if (xHandleSerialRead != NULL) 
     Serial.printf("SERIAL READ TASK STATUS %s\n", TaskStateToString(eTaskGetState(xHandleSerialRead)));
   else
@@ -537,6 +562,44 @@ void SerialWriteTask(void* pvParameters)
 
     // limit task refresh rate
     vTaskDelay(SERIAL_WRITE_REFRESH_RATE);
+  }
+}
+
+
+/**
+ * @brief reads the i2c bus from tractive core
+ * @param pvParameters parameters passed to task
+ */
+void TractiveReadTask(void* pvParameters)
+{
+  for (;;) 
+  {  
+    if (xSemaphoreTake(xMutex, (TickType_t) 10) == pdTRUE)
+    {
+      // inits
+      TractiveCoreData tmpData;
+      long tmp;
+
+      // read the bus
+      while (Wire.available()) {
+        Wire.readBytes((uint8_t*) &tmpData, sizeof(tmpData));
+
+        // copy data 
+        telemetryCoreData.tractiveCoreData = tmpData;
+      }
+
+      // release mutex!
+      xSemaphoreGive(xMutex);
+    }
+
+
+    // debugging
+    if (debugger.debugEnabled) {
+      debugger.tractiveReadTaskCount++;
+    }
+
+    // limit task refresh rate
+    vTaskDelay(TRACTIVE_READ_REFRESH_RATE);
   }
 }
 
@@ -733,10 +796,14 @@ void PrintSchedulerDebug()
   if (xHandleSerialWrite != NULL) {
     taskStates.push_back(eTaskGetState(xHandleSerialWrite));
   }
+  if (xHandleTractiveRead != NULL) {
+    taskStates.push_back(eTaskGetState(xHandleTractiveRead));
+  }
 
   taskRefreshRate.push_back(debugger.ioReadTaskCount - debugger.ioReadTaskPreviousCount);
   taskRefreshRate.push_back(debugger.serialReadTaskCount - debugger.serialReadTaskPreviousCount);
   taskRefreshRate.push_back(debugger.serialWriteTaskCount - debugger.serialWriteTaskPreviousCount);
+  taskRefreshRate.push_back(debugger.tractiveReadTaskCount - debugger.tractiveReadTaskPreviousCount);
 
   // make it usable
   for (int i = 0; i < taskStates.size() - 1; ++i) {
@@ -744,12 +811,13 @@ void PrintSchedulerDebug()
   }
 
   // print it
-  Serial.printf("uptime: %d | read io:<%d Hz> (%d) | read serial:<%d Hz> (%d) | write serial:<%d Hz> (%d) \r",
+  Serial.printf("uptime: %d | read io:<%d Hz> (%d) | read serial:<%d Hz> (%d) | write serial:<%d Hz> (%d) | tractive update: <%d Hz> (%d) \r",
     uptime, taskRefreshRate.at(0), debugger.ioReadTaskCount, taskRefreshRate.at(1), debugger.serialReadTaskCount,
-    taskRefreshRate.at(2), debugger.serialWriteTaskCount);
+    taskRefreshRate.at(2), debugger.serialWriteTaskCount, taskRefreshRate.at(3), debugger.tractiveReadTaskCount);
 
   // update counters
   debugger.ioReadTaskPreviousCount = debugger.ioReadTaskCount;
   debugger.serialReadTaskPreviousCount = debugger.serialReadTaskCount;
   debugger.serialWriteTaskPreviousCount = debugger.serialWriteTaskCount;
+  debugger.tractiveReadTaskPreviousCount = debugger.tractiveReadTaskCount;
 }
