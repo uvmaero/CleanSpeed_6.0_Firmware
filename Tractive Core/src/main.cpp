@@ -44,7 +44,7 @@
 #define TRAC_CON_STEP_INCREASE_MOD      3           // the decrease in traction control management as a mutliple of the increasing step          
 
 #define TIRE_DIAMETER                   20.0        // diameter of the vehicle's tires in inches
-#define WHEEL_RPM_CALC_THRESHOLD        20          // the number of times the hall effect sensor is tripped before calculating vehicle speed
+#define WHEEL_RPM_CALC_THRESHOLD        5           // the number of times the hall effect sensor is tripped before calculating vehicle speed
 
 #define BRAKE_LIGHT_THRESHOLD           50          // the threshold that must be crossed for the brake to be considered active
 
@@ -79,7 +79,7 @@
 
 // tasks
 #define IO_WRITE_REFRESH_RATE           9           // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define IO_READ_REFRESH_RATE            9           // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define IO_READ_REFRESH_RATE            2           // measured in ticks (RTOS ticks interrupt at 1 kHz)
 #define TWAI_WRITE_REFRESH_RATE         8           // measured in ticks (RTOS ticks interrupt at 1 kHz)
 #define TWAI_READ_REFRESH_RATE          8           // measured in ticks (RTOS ticks interrupt at 1 kHz)
 #define PRECHARGE_REFRESH_RATE          225         // measured in ticks (RTOS ticks interrupt at 1 kHz)
@@ -248,6 +248,10 @@ TaskHandle_t xHandleTWAIWrite = NULL;
 TaskHandle_t xHandlePrecharge = NULL;
 TaskHandle_t xHandleTelemetryUpdate = NULL;
 
+TaskHandle_t xHandleFrontWheelSpeed = NULL;
+TaskHandle_t xHandleRearRightWheelSpeed = NULL;
+TaskHandle_t xHandleRearLeftWheelSpeed = NULL;
+
 TaskHandle_t xHandleDebug = NULL;
 
 
@@ -277,14 +281,14 @@ void DebugTask(void* pvParameters);
 void GetCommandedTorque();
 uint16_t CalculateThrottleResponse(uint16_t value);
 uint16_t TractionControl(uint16_t value);
+
+void FrontWheelSpeedCalculator();
+void RearRightWheelSpeedCalculator();
+void RearLeftWheelSpeedCalculator();
+
 short DriveModeToNumber();
 short PrechargeStateToNumber();
 String TaskStateToString(eTaskState state);
-
-// ISRs
-void FrontWheelSpeedISR();
-void BRWheelSpeedISR();
-void BLWheelSpeedISR();
 
 
 /*
@@ -356,11 +360,6 @@ void setup() {
   pinMode(FL_HALL_EFFECT_PIN, INPUT);
   pinMode(BR_HALL_EFFECT_PIN, INPUT);
   pinMode(BL_HALL_EFFECT_PIN, INPUT);
-
-  // pin interrupts
-  attachInterrupt(FR_HALL_EFFECT_PIN, FrontWheelSpeedISR, RISING);
-  attachInterrupt(BR_HALL_EFFECT_PIN, BRWheelSpeedISR, RISING);
-  attachInterrupt(BL_HALL_EFFECT_PIN, BLWheelSpeedISR, RISING);
 
   // outputs
   pinMode(VICORE_ENABLE_PIN, OUTPUT);
@@ -492,112 +491,6 @@ void setup() {
 
 /*
 ===============================================================================================
-                                        ISRs
-===============================================================================================
-*/
-
-
-/**
- * ISR for caluclating front wheel speeds 
-*/
-void FrontWheelSpeedISR() 
-{
-  portENTER_CRITICAL_ISR(&timerMux);
-  xSemaphoreTakeFromISR(xMutex, NULL);
-
-  // increment pass counter
-  tractiveCoreData.sensors.frontWheelSpeedCount++;
-
-  // calculate wheel rpm
-  if (tractiveCoreData.sensors.frontWheelSpeedCount > WHEEL_RPM_CALC_THRESHOLD) {
-    // get time difference
-    float timeDiff = (float)esp_timer_get_time() - (float)tractiveCoreData.sensors.frontWheelSpeedTime;
-
-    // calculate rpm
-    tractiveCoreData.sensors.frontWheelsSpeed = ((float)tractiveCoreData.sensors.frontWheelSpeedCount / (timeDiff / 1000000.0)) * 60.0;
-
-    // update time keeping
-    tractiveCoreData.sensors.frontWheelSpeedTime = esp_timer_get_time();
-
-    // reset counter
-    tractiveCoreData.sensors.frontWheelSpeedCount = 0;
-  }
-
-  xSemaphoreGiveFromISR(xMutex, NULL);
-  portEXIT_CRITICAL_ISR(&timerMux);
-
-  return;
-}
-
-
-/**
- * ISR for caluclating rear right wheel speeds 
-*/
-void BRWheelSpeedISR() 
-{
-  portENTER_CRITICAL_ISR(&timerMux);
-  xSemaphoreTakeFromISR(xMutex, NULL);
-
-  // increment pass counter
-  tractiveCoreData.sensors.brWheelSpeedCount++;
-
-  // calculate wheel rpm
-  if (tractiveCoreData.sensors.brWheelSpeedCount > WHEEL_RPM_CALC_THRESHOLD) {
-    // get time difference
-    float timeDiff = (float)esp_timer_get_time() - (float)tractiveCoreData.sensors.brWheelSpeedTime;
-
-    // calculate rpm
-    tractiveCoreData.sensors.brWheelSpeed = ((float)tractiveCoreData.sensors.brWheelSpeedCount / (timeDiff / 1000000.0)) * 60.0;
-
-    // update time keeping
-    tractiveCoreData.sensors.brWheelSpeedTime = esp_timer_get_time();
-
-    // reset counter
-    tractiveCoreData.sensors.brWheelSpeedCount = 0;
-  }
-
-  xSemaphoreGiveFromISR(xMutex, NULL);
-  portEXIT_CRITICAL_ISR(&timerMux);
-
-  return;
-}
-
-
-/**
- * ISR for caluclating rear left wheel speeds 
-*/
-void BLWheelSpeedISR() 
-{
-  portENTER_CRITICAL_ISR(&timerMux);
-  xSemaphoreTakeFromISR(xMutex, NULL);
-
-  // increment pass counter
-  tractiveCoreData.sensors.blWheelSpeedCount++;
-
-  // calculate wheel rpm
-  if (tractiveCoreData.sensors.blWheelSpeedCount > WHEEL_RPM_CALC_THRESHOLD) {
-    // get time difference
-    float timeDiff = (float)esp_timer_get_time() - (float)tractiveCoreData.sensors.blWheelSpeedTime;
-
-    // calculate rpm
-    tractiveCoreData.sensors.blWheelSpeed = ((float)tractiveCoreData.sensors.blWheelSpeedCount / (timeDiff / 1000000.0)) * 60.0;
-
-    // update time keeping
-    tractiveCoreData.sensors.blWheelSpeedTime = esp_timer_get_time();
-
-    // reset counter
-    tractiveCoreData.sensors.blWheelSpeedCount = 0;
-  }
-
-  xSemaphoreGiveFromISR(xMutex, NULL);
-  portEXIT_CRITICAL_ISR(&timerMux);
-
-  return;
-}
-
-
-/*
-===============================================================================================
                                 FreeRTOS Task Functions
 ===============================================================================================
 */
@@ -645,6 +538,11 @@ void IOReadTask(void* pvParameters)
       else {
         tractiveCoreData.outputs.brakeLightEnable = false;
       }
+
+      // wheel speed
+      FrontWheelSpeedCalculator();
+      RearRightWheelSpeedCalculator();
+      RearLeftWheelSpeedCalculator();
 
       // traction control
       if (digitalRead(TRACTION_CONTROL_SWITCH_PIN == HIGH)) {
@@ -1369,7 +1267,7 @@ uint16_t TractionControl(uint16_t commandedTorque) {
   }
 
   // spinning rear wheels scenario
-  if (averageRearWheelSpeed > (tractiveCoreData.sensors.frontWheelsSpeed * (1 - TRAC_CON_ENABLE_BIAS))) {
+  if (averageRearWheelSpeed > (tractiveCoreData.sensors.frontWheelsSpeed * (1 + TRAC_CON_ENABLE_BIAS))) {
     spinTractionControlEnable = true;
   }
   else {
@@ -1395,6 +1293,63 @@ uint16_t TractionControl(uint16_t commandedTorque) {
 
   // calculate an adjusted commanded torque
   return (uint16_t)(commandedTorque * tractiveCoreData.tractive.tractionControlModifier);
+}
+
+
+/**
+ * @brief get the speed of the front wheels
+ * @param pvParameters parameters passed to task
+*/
+void FrontWheelSpeedCalculator() 
+{
+  // get time difference
+  float timeDiff = (float)esp_timer_get_time() - (float)tractiveCoreData.sensors.frontWheelSpeedTime;
+
+  // calculate rpm
+  tractiveCoreData.sensors.frontWheelsSpeed = (timeDiff / 1000000.0) * 60.0;
+
+  // update time keeping
+  tractiveCoreData.sensors.frontWheelSpeedTime = esp_timer_get_time();
+  
+  return;
+}
+
+
+/**
+ * @brief get the speed of the rear right wheels
+ * @param pvParameters parameters passed to task
+*/
+void RearRightWheelSpeedCalculator()
+{
+  // get time difference
+  float timeDiff = (float)esp_timer_get_time() - (float)tractiveCoreData.sensors.brWheelSpeedTime;
+
+  // calculate rpm
+  tractiveCoreData.sensors.brWheelSpeed = (timeDiff / 1000000.0) * 60.0;
+
+  // update time keeping
+  tractiveCoreData.sensors.brWheelSpeedTime = esp_timer_get_time();
+
+  return;
+}
+
+
+/**
+ * @brief get the speed of the rear left wheels
+ * @param pvParameters parameters passed to task
+*/
+void RearLeftWheelSpeedCalculator()
+{
+  // get time difference
+  float timeDiff = (float)esp_timer_get_time() - (float)tractiveCoreData.sensors.blWheelSpeedTime;
+
+  // calculate rpm
+  tractiveCoreData.sensors.blWheelSpeed = (timeDiff / 1000000.0) * 60.0;
+
+  // update time keeping
+  tractiveCoreData.sensors.blWheelSpeedTime = esp_timer_get_time();
+
+  return;
 }
 
 
