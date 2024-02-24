@@ -4,19 +4,17 @@
  * @brief telemetry core
  * @version 1.0
  * @date 2024-01-23
- * 
+ *
  * @ref https://espressif-docs.readthedocs-hosted.com/projects/arduino-esp32/en/latest/libraries.html#apis      (api and hal docs)
  * @ref https://docs.espressif.com/projects/esp-idf/en/latest/esp32s3/_images/ESP32-S3_DevKitC-1_pinlayout.jpg  (pinout & overview)
  * @ref https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/system/freertos_idf.html      (FreeRTOS for ESP32 docs)
  */
 
-
 /*
 ===============================================================================================
-                                    Includes 
+                                    Includes
 ===============================================================================================
 */
-
 
 #include <Arduino.h>
 #include <Wire.h>
@@ -28,32 +26,28 @@
 #include <data_types.h>
 #include <pin_config.h>
 
-
 /*
 ===============================================================================================
                                     Definitions
 ===============================================================================================
 */
 
-
 // tasks
-#define IO_READ_REFRESH_RATE            9           // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define SERIAL_WRITE_REFRESH_RATE       9           // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define SERIAL_READ_REFRESH_RATE        9           // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define DEBUG_REFRESH_RATE              1000        // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define TRACTIVE_READ_REFRESH_RATE      9           // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define IO_READ_REFRESH_RATE 9       // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define SERIAL_WRITE_REFRESH_RATE 9  // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define SERIAL_READ_REFRESH_RATE 9   // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define DEBUG_REFRESH_RATE 1000      // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define TRACTIVE_READ_REFRESH_RATE 9 // measured in ticks (RTOS ticks interrupt at 1 kHz)
 
-#define TASK_STACK_SIZE                 20000       // in bytes
-
+#define TASK_STACK_SIZE 20000 // in bytes
 
 // general
-#define SERIAL_BAUD_RATE                9600        // baud rate
-#define TELEMETRY_CORE_I2C_ADDR         0x10        // address for i2c in hex
-#define I2C_FREQUENCY                   100000      // frequency of bus
+#define SERIAL_BAUD_RATE 9600        // baud rate
+#define TELEMETRY_CORE_I2C_ADDR 0x10 // address for i2c in hex
+#define I2C_FREQUENCY 100000         // frequency of bus
 
 // debug
-#define ENABLE_DEBUG                    true       // master debug message control
-
+#define ENABLE_DEBUG true // master debug message control
 
 /*
 ===============================================================================================
@@ -61,180 +55,174 @@
 ===============================================================================================
 */
 
-
 /**
  * @brief debugger structure used for organizing debug information
- * 
+ *
  */
 Debugger debugger = {
-  // debug toggle
-  .debugEnabled = ENABLE_DEBUG,
-  .serial_debugEnabled = false,
-  .IO_debugEnabled = false,
-  .twai_debugEnable = false,
-  .scheduler_debugEnable = true,
+    // debug toggle
+    .debugEnabled = ENABLE_DEBUG,
+    .serial_debugEnabled = false,
+    .IO_debugEnabled = false,
+    .twai_debugEnable = false,
+    .scheduler_debugEnable = true,
 
-  // I/O data
-  .IO_data = {},
+    // I/O data
+    .IO_data = {},
 
-  // scheduler data
-  .ioReadTaskCount = 0,
-  .serialReadTaskCount = 0,
-  .serialWriteTaskCount = 0,
-  .twaiReadTaskCount = 0,
+    // scheduler data
+    .ioReadTaskCount = 0,
+    .serialReadTaskCount = 0,
+    .serialWriteTaskCount = 0,
+    .twaiReadTaskCount = 0,
 
-  .ioReadTaskPreviousCount = 0,
-  .serialReadTaskPreviousCount = 0,
-  .serialWriteTaskPreviousCount = 0,
-  .twaiReadTaskPreviousCount = 0,
+    .ioReadTaskPreviousCount = 0,
+    .serialReadTaskPreviousCount = 0,
+    .serialWriteTaskPreviousCount = 0,
+    .twaiReadTaskPreviousCount = 0,
 };
-
 
 /**
  * @brief the dataframe that describes the entire state of the car
- * 
+ *
  */
 TelemetryCoreData telemetryCoreData = {
-  // tractive data
-  .tractiveCoreData = {
-    .tractive = {
-      .readyToDrive = false,
-      .enableInverter = false,
+    // tractive data
+    .tractiveCoreData = {
+        .tractive = {
+            .readyToDrive = false,
+            .enableInverter = false,
 
-      .prechargeState = PRECHARGE_OFF,
+            .prechargeState = PRECHARGE_OFF,
 
-      .rinehartVoltage = 0.0f,
-      .commandedTorque = 0,
+            .rinehartVoltage = 0.0f,
+            .commandedTorque = 0,
 
-      .driveDirection = false,    // forward is false | reverse is true (we run backwards)
-      .driveMode = ECO,
-      
-      .currentSpeed = 0.0f,
+            .driveDirection = false, // forward is false | reverse is true (we run backwards)
+            .driveMode = ECO,
 
-      .tractionControlEnable = true,
-      .tractionControlModifier = 1.00f,
+            .currentSpeed = 0.0f,
 
-      .coastRegen = 0,
-      .brakeRegen = 0,
+            .tractionControlEnable = true,
+            .tractionControlModifier = 1.00f,
+
+            .coastRegen = 0,
+            .brakeRegen = 0,
+        },
+
+        // sensor data
+        .sensors = {
+            .imdFault = true,
+            .bmsFault = true,
+            .vicoreFault = false,
+
+            .coolingTempIn = 0.0f,
+            .coolingTempOut = 0.0f,
+
+            .frontWheelsSpeed = 0.0f,
+            .frontWheelSpeedCount = 0,
+            .frontWheelSpeedTime = 0,
+
+            .brWheelSpeed = 0.0f,
+            .brWheelSpeedCount = 0,
+            .brWheelSpeedTime = 0,
+
+            .blWheelSpeed = 0.0f,
+            .blWheelSpeedCount = 0,
+            .blWheelSpeedTime = 0,
+        },
+
+        // inputs
+        .inputs = {
+            .pedal0 = 0,
+            .pedal1 = 0,
+
+            .frontBrake = 0,
+            .rearBrake = 0,
+        },
+
+        // outputs
+        .outputs = {
+            .brakeLightEnable = false,
+
+            .fansEnable = false,
+
+            .buzzerEnable = false,
+        },
+
+        // orion
+        .orion = {
+            .batteryChargeState = 0,
+
+            .busVoltage = 0,
+
+            .packCurrent = 0.0f,
+
+            .minCellVoltage = 0.0f,
+            .maxCellVoltage = 0.0f,
+            .minCellTemp = 0.0f,
+            .maxCellTemp = 0.0f,
+        }},
+
+    // telemetry data
+
+    // wheel damper sensors
+    .dampers = {
+        .frSuspensionDamper = 0,
+        .flSuspensionDamper = 0,
+        .brSuspensionDamper = 0,
+        .blSuspensionDamper = 0,
     },
 
-    // sensor data
-    .sensors = {
-      .imdFault = true,
-      .bmsFault = true,
-      .vicoreFault = false,
-
-      .coolingTempIn = 0.0f,
-      .coolingTempOut = 0.0f,
-
-      .frontWheelsSpeed = 0.0f,
-      .frontWheelSpeedCount = 0,
-      .frontWheelSpeedTime = 0,
-
-      .brWheelSpeed = 0.0f,
-      .brWheelSpeedCount = 0,
-      .brWheelSpeedTime = 0,
-
-      .blWheelSpeed = 0.0f,
-      .blWheelSpeedCount = 0,
-      .blWheelSpeedTime = 0,
+    // tire temperature sensors
+    .tireTemp = {
+        .frTireTemp = 0,
+        .flTireTemp = 0,
+        .brTireTemp = 0,
+        .blTireTemp = 0,
     },
 
-    // inputs
-    .inputs = {
-      .pedal0 = 0,
-      .pedal1 = 0,
+    // suspension strain sensors
+    .strain = {
+        .frStrain1 = 0,
+        .flStrain1 = 0,
+        .brStrain1 = 0,
+        .blStrain1 = 0,
 
-      .frontBrake = 0,
-      .rearBrake = 0,
+        .frStrain2 = 0,
+        .flStrain2 = 0,
+        .brStrain2 = 0,
+        .blStrain2 = 0,
     },
 
-    // outputs
-    .outputs = {
-      .brakeLightEnable = false,
-
-      .fansEnable = false,
-
-      .buzzerEnable = false,
+    // steering wheel sensors
+    .steering = {
+        .steeringWheelDeflection = 0,
     },
 
-    // orion
-    .orion = {
-      .batteryChargeState = 0,
+    // inertial monitoring unit data
+    .imu = {
+        .xAcceleration = 0.0f,
+        .yAcceleration = 0.0f,
+        .zAcceleration = 0.0f,
+        .xGyro = 0.0f,
+        .yGyro = 0.0f,
+        .zGyro = 0.0f,
+    },
 
-      .busVoltage = 0,
-
-      .packCurrent = 0.0f,
-
-      .minCellVoltage = 0.0f,
-      .maxCellVoltage = 0.0f,
-      .minCellTemp = 0.0f,
-      .maxCellTemp = 0.0f,
-    }
-  },
-
-  // telemetry data
-
-  // wheel damper sensors
-  .dampers = {
-    .frSuspensionDamper = 0,
-    .flSuspensionDamper = 0,
-    .brSuspensionDamper = 0,
-    .blSuspensionDamper = 0,
-  },
-
-  // tire temperature sensors
-  .tireTemp = {
-    .frTireTemp = 0,
-    .flTireTemp = 0,
-    .brTireTemp = 0,
-    .blTireTemp = 0,
-  },
-
-  // suspension strain sensors
-  .strain = {
-    .frStrain1 = 0,
-    .flStrain1 = 0,
-    .brStrain1 = 0,
-    .blStrain1 = 0,
-
-    .frStrain2 = 0,
-    .flStrain2 = 0,
-    .brStrain2 = 0,
-    .blStrain2 = 0,
-  },
-
-  // steering wheel sensors
-  .steering = {
-    .steeringWheelDeflection = 0,
-  },
-
-  // inertial monitoring unit data
-  .imu = {
-    .xAcceleration = 0.0f,
-    .yAcceleration = 0.0f,
-    .zAcceleration = 0.0f,
-    .xGyro = 0.0f,
-    .yGyro = 0.0f,
-    .zGyro = 0.0f,
-  },
-
-  // global positioning system data
-  .gps = {
-    .latitide = 0.0f,
-    .longitude = 0.0f,
-    .altitude = 0.0f,
-    .speed = 0.0f,
-    .year = 0,
-    .month = 0,
-    .day = 0,
-  }
-};
-
+    // global positioning system data
+    .gps = {
+        .latitide = 0.0f,
+        .longitude = 0.0f,
+        .altitude = 0.0f,
+        .speed = 0.0f,
+        .year = 0,
+        .month = 0,
+        .day = 0,
+    }};
 
 // Mutex
 SemaphoreHandle_t xMutex = NULL;
-
 
 // RTOS Task Handles
 TaskHandle_t xHandleIORead = NULL;
@@ -244,53 +232,46 @@ TaskHandle_t xHandleTractiveRead = NULL;
 
 TaskHandle_t xHandleDebug = NULL;
 
-
 // Hardware Timers
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 
-
 // GPS
-
 
 // IMU
 
-
 // Raspberry Pi
-
 
 /*
 ===============================================================================================
-                                    Function Declarations 
+                                    Function Declarations
 ===============================================================================================
 */
 
-
 // tasks
-void IOReadTask(void* pvParameters);
-void SerialReadTask(void* pvParameters);
-void SerialWriteTask(void* pvParameters);
-void TractiveReadTask(void* pvParameters);
-void DebugTask(void* pvParameters);
-
+void IOReadTask(void *pvParameters);
+void SerialReadTask(void *pvParameters);
+void SerialWriteTask(void *pvParameters);
+void TractiveReadTask(void *pvParameters);
+void DebugTask(void *pvParameters);
 
 // helpers
 DriveMode NumberToDriveMode(uint8_t value);
 PrechargeStates NumberToPrechargeState(uint8_t value);
 String TaskStateToString(eTaskState state);
 
-
 /*
 ===============================================================================================
-                                            Setup 
+                                            Setup
 ===============================================================================================
 */
 
-
-void setup() {
+void setup()
+{
   // set power configuration
   esp_pm_configure(&power_configuration);
 
-  if (debugger.debugEnabled) {
+  if (debugger.debugEnabled)
+  {
     // delay startup by 3 seconds
     vTaskDelay(3000);
   }
@@ -313,24 +294,24 @@ void setup() {
   Serial.printf("\n\n|--- STARTING SETUP ---|\n\n");
   // -------------------------------------------------------------------------- //
 
-
   // ----------------------- initialize i2c connection ----------------------- //
 
-  if (Wire.begin(TELEMETRY_CORE_I2C_ADDR, I2C_RX_PIN, I2C_TX_PIN, 100000) == true) {
-    Wire.setBufferSize(255);    // change the buffer size to fit the data
+  if (Wire.begin(TELEMETRY_CORE_I2C_ADDR, I2C_RX_PIN, I2C_TX_PIN, 100000) == true)
+  {
+    Wire.setBufferSize(255); // change the buffer size to fit the data
 
     Serial.printf("TRACTIVE CONNECTION INIT [ SUCCESS ]\n");
     setup.i2cActive = true;
   }
-  else {
+  else
+  {
     Serial.printf("TRACTIVE CONNECTION INIT [ FAILED ]\n");
   }
   // -------------------------------------------------------------------------- //
 
-
   // -------------------------- initialize GPIO ------------------------------ //
   analogReadResolution(12);
-  
+
   // inputs
   pinMode(FR_SUSPENSION_DAMPER_PIN, INPUT);
   pinMode(FL_SUSPENSION_DAMPER_PIN, INPUT);
@@ -351,17 +332,15 @@ void setup() {
   pinMode(FL_STRAIN_2_PIN, INPUT);
   pinMode(BR_STRAIN_2_PIN, INPUT);
   pinMode(BL_STRAIN_2_PIN, INPUT);
-  
+
   pinMode(STEERING_DEFLECTION_PIN, INPUT);
 
-
   // outputs
-
 
   Serial.printf("GPIO INIT [ SUCCESS ]\n");
   setup.ioActive = true;
   // -------------------------------------------------------------------------- //
-  
+
   // --------------------- initialize RPi Connection -------------------------- //
 
   Serial.printf("RPi INIT [ SUCCESS ]\n");
@@ -369,14 +348,12 @@ void setup() {
   setup.serialActive = true;
   // -------------------------------------------------------------------------- //
 
-
   // -------------------------- initialize LoRa ------------------------------- //
 
   Serial.printf("LORA INIT [ SUCCESS ]\n");
   setup.loraActive = true;
   // -------------------------------------------------------------------------- //
 
-  
   // -------------------------- initialize GPS -------------------------------- //
 
   Serial.printf("GPS INIT [ SUCCESS ]\n");
@@ -384,72 +361,78 @@ void setup() {
   setup.gpsActive = true;
   // -------------------------------------------------------------------------- //
 
-
   // -------------------------- initialize IMU -------------------------------- //
 
   Serial.printf("IMU INIT [ SUCCESS ]\n");
   setup.imuActive = true;
   // -------------------------------------------------------------------------- //
 
-
   // ------------------------------- Scheduler & Task Status --------------------------------- //
   // init mutex
   xMutex = xSemaphoreCreateMutex();
-  
+
   // task setup status
   Serial.printf("\nTask Setup Status:\n");
   Serial.printf("I/O TASK SETUP: %s\n", setup.ioActive ? "COMPLETE" : "FAILED");
   Serial.printf("SERIAL TASK SETUP: %s\n", setup.ioActive ? "COMPLETE" : "FAILED");
 
-  if (xMutex != NULL) {
+  if (xMutex != NULL)
+  {
     // start tasks
-    if (setup.ioActive) {
+    if (setup.ioActive)
+    {
       xTaskCreatePinnedToCore(IOReadTask, "IO-Read", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleIORead, 0);
     }
 
-    if (setup.i2cActive) {
+    if (setup.i2cActive)
+    {
       xTaskCreatePinnedToCore(TractiveReadTask, "Tractive-Read", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleTractiveRead, 0);
     }
 
-    if (setup.rpiComActive && setup.gpsActive && setup.imuActive && setup.loraActive && setup.serialActive) {
+    if (setup.rpiComActive && setup.gpsActive && setup.imuActive && setup.loraActive && setup.serialActive)
+    {
       xTaskCreatePinnedToCore(SerialReadTask, "Serial-Read", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleSerialRead, 1);
       xTaskCreatePinnedToCore(SerialWriteTask, "Serial-Write", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleSerialWrite, 1);
-    }  
+    }
 
-    if (debugger.debugEnabled == true) {
+    if (debugger.debugEnabled == true)
+    {
       xTaskCreate(DebugTask, "Debugger", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleDebug);
     }
   }
-  else {
+  else
+  {
     Serial.printf("FAILED TO INIT MUTEX!\nHALTING OPERATIONS!");
-    while (1) {};
+    while (1)
+    {
+    };
   }
 
   // task status
   Serial.printf("\nTask Status:\n");
   if (xHandleIORead != NULL)
     Serial.printf("I/O READ TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandleIORead)));
-  else 
+  else
     Serial.printf("I/O READ TASK STATUS: DISABLED!\n");
-  
+
   if (xHandleTractiveRead != NULL)
     Serial.printf("TRACTIVE READ TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandleTractiveRead)));
-  else 
+  else
     Serial.printf("TRACTIVE READ TASK STATUS: DISABLED!\n");
 
-  if (xHandleSerialRead != NULL) 
+  if (xHandleSerialRead != NULL)
     Serial.printf("SERIAL READ TASK STATUS %s\n", TaskStateToString(eTaskGetState(xHandleSerialRead)));
   else
     Serial.printf("SERIAL READ TASK STAUS: DISABLED!\n");
 
-  if (xHandleSerialWrite != NULL) 
+  if (xHandleSerialWrite != NULL)
     Serial.printf("SERIAL WRITE TASK STATUS %s\n", TaskStateToString(eTaskGetState(xHandleSerialWrite)));
   else
     Serial.printf("SERIAL WRTIE TASK STAUS: DISABLED!\n");
 
-
   // scheduler status
-  if (xTaskGetSchedulerState() == taskSCHEDULER_RUNNING) {
+  if (xTaskGetSchedulerState() == taskSCHEDULER_RUNNING)
+  {
     Serial.printf("\nScheduler Status: RUNNING\n");
 
     // clock frequency
@@ -457,14 +440,16 @@ void setup() {
     rtc_clk_cpu_freq_get_config(&clock_config);
     Serial.printf("CPU Frequency: %dMHz\n", clock_config.freq_mhz);
   }
-  else {
+  else
+  {
     Serial.printf("\nScheduler STATUS: FAILED\nHALTING OPERATIONS");
-    while (1) {};
+    while (1)
+    {
+    };
   }
   Serial.printf("\n|--- END SETUP ---|\n\n");
   // ---------------------------------------------------------------------------------------- //
 }
-
 
 /*
 ===============================================================================================
@@ -472,16 +457,16 @@ void setup() {
 ===============================================================================================
 */
 
-
 /**
  * @brief reads I/O
  * @param pvParameters parameters passed to task
  */
-void IOReadTask(void* pvParameters)
+void IOReadTask(void *pvParameters)
 {
-  for (;;) 
+  for (;;)
   {
-    if (xSemaphoreTake(xMutex, (TickType_t) 10) == pdTRUE) {
+    if (xSemaphoreTake(xMutex, (TickType_t)10) == pdTRUE)
+    {
       // dampers
 
       // tire temps
@@ -495,7 +480,8 @@ void IOReadTask(void* pvParameters)
     }
 
     // debugging
-    if (debugger.debugEnabled) {
+    if (debugger.debugEnabled)
+    {
       debugger.IO_data = telemetryCoreData;
       debugger.ioReadTaskCount++;
     }
@@ -505,19 +491,17 @@ void IOReadTask(void* pvParameters)
   }
 }
 
-
 /**
  * @brief reads the various serial busses
  * @param pvParameters parameters passed to task
  */
-void SerialReadTask(void* pvParameters)
+void SerialReadTask(void *pvParameters)
 {
-  for (;;) 
+  for (;;)
   {
-    if (xSemaphoreTake(xMutex, (TickType_t) 10) == pdTRUE)
+    if (xSemaphoreTake(xMutex, (TickType_t)10) == pdTRUE)
     {
       // GPS
-
 
       // IMU
 
@@ -526,7 +510,8 @@ void SerialReadTask(void* pvParameters)
     }
 
     // debugging
-    if (debugger.debugEnabled) {
+    if (debugger.debugEnabled)
+    {
       debugger.serialReadTaskCount++;
     }
 
@@ -535,19 +520,17 @@ void SerialReadTask(void* pvParameters)
   }
 }
 
-
 /**
  * @brief writes to the various serial busses
  * @param pvParameters parameters passed to task
  */
-void SerialWriteTask(void* pvParameters)
+void SerialWriteTask(void *pvParameters)
 {
-  for (;;) 
-  {  
-    if (xSemaphoreTake(xMutex, (TickType_t) 10) == pdTRUE)
+  for (;;)
+  {
+    if (xSemaphoreTake(xMutex, (TickType_t)10) == pdTRUE)
     {
       // LoRa update
-
 
       // HUD update
 
@@ -556,7 +539,8 @@ void SerialWriteTask(void* pvParameters)
     }
 
     // debugging
-    if (debugger.debugEnabled) {
+    if (debugger.debugEnabled)
+    {
       debugger.serialWriteTaskCount++;
     }
 
@@ -565,26 +549,26 @@ void SerialWriteTask(void* pvParameters)
   }
 }
 
-
 /**
  * @brief reads the i2c bus from tractive core
  * @param pvParameters parameters passed to task
  */
-void TractiveReadTask(void* pvParameters)
+void TractiveReadTask(void *pvParameters)
 {
-  for (;;) 
-  {  
-    if (xSemaphoreTake(xMutex, (TickType_t) 10) == pdTRUE)
+  for (;;)
+  {
+    if (xSemaphoreTake(xMutex, (TickType_t)10) == pdTRUE)
     {
       // inits
       TractiveCoreData tmpData;
       long tmp;
 
       // read the bus
-      while (Wire.available()) {
-        Wire.readBytes((uint8_t*) &tmpData, sizeof(tmpData));
+      while (Wire.available())
+      {
+        Wire.readBytes((uint8_t *)&tmpData, sizeof(tmpData));
 
-        // copy data 
+        // copy data
         telemetryCoreData.tractiveCoreData = tmpData;
       }
 
@@ -592,9 +576,9 @@ void TractiveReadTask(void* pvParameters)
       xSemaphoreGive(xMutex);
     }
 
-
     // debugging
-    if (debugger.debugEnabled) {
+    if (debugger.debugEnabled)
+    {
       debugger.tractiveReadTaskCount++;
     }
 
@@ -603,20 +587,22 @@ void TractiveReadTask(void* pvParameters)
   }
 }
 
-
 /**
- * @brief manages toggle-able debug settings & scheduler debugging 
+ * @brief manages toggle-able debug settings & scheduler debugging
  */
-void DebugTask(void* pvParameters) {
-  for (;;) 
+void DebugTask(void *pvParameters)
+{
+  for (;;)
   {
     // I/O
-    if (debugger.IO_debugEnabled) {
+    if (debugger.IO_debugEnabled)
+    {
       PrintIODebug();
     }
 
     // Scheduler
-    if (debugger.scheduler_debugEnable) {
+    if (debugger.scheduler_debugEnable)
+    {
       PrintSchedulerDebug();
     }
 
@@ -625,13 +611,11 @@ void DebugTask(void* pvParameters) {
   }
 }
 
-
 /*
 ===============================================================================================
                                     Main Loop
 ===============================================================================================
 */
-
 
 /**
  * @brief the main loop of the program
@@ -639,9 +623,8 @@ void DebugTask(void* pvParameters) {
 void loop()
 {
   // everything is managed by RTOS, so nothing really happens here!
-  vTaskDelay(1);    // prevent watchdog from getting upset
+  vTaskDelay(1); // prevent watchdog from getting upset
 }
-
 
 /*
 ===============================================================================================
@@ -649,60 +632,65 @@ void loop()
 ===============================================================================================
 */
 
-
 /**
  * convert a number to drive mode
-*/
+ */
 DriveMode NumberToDriveMode(uint8_t value)
 {
   // inits
   DriveMode mode;
 
   // convert
-  if (value == 1) {
+  if (value == 1)
+  {
     mode = SLOW;
   }
-  if (value == 2) {
+  if (value == 2)
+  {
     mode = ECO;
   }
-  if (value == 3) {
+  if (value == 3)
+  {
     mode = FAST;
   }
 
   return mode;
 }
 
-
 /**
  * convert a number to precharge state
-*/
+ */
 PrechargeStates NumberToPrechargeState(uint8_t value)
 {
-  // init 
+  // init
   PrechargeStates state;
 
   // convert
-  if (value == 1) {
+  if (value == 1)
+  {
     state = PRECHARGE_OFF;
   }
-  if (value == 2) {
+  if (value == 2)
+  {
     state = PRECHARGE_ON;
   }
-  if (value == 3) {
+  if (value == 3)
+  {
     state = PRECHARGE_DONE;
   }
-  if (value == 4) {
+  if (value == 4)
+  {
     state = PRECHARGE_ERROR;
   }
 
   return state;
 }
 
-
 /**
- * 
-*/
-String TaskStateToString(eTaskState state) {
+ *
+ */
+String TaskStateToString(eTaskState state)
+{
   // init
   String stateStr;
 
@@ -710,36 +698,34 @@ String TaskStateToString(eTaskState state) {
   switch (state)
   {
   case eReady:
-    stateStr = "RUNNING";        
-  break;
+    stateStr = "RUNNING";
+    break;
 
   case eBlocked:
-    stateStr = "BLOCKED";        
-  break;
+    stateStr = "BLOCKED";
+    break;
 
   case eSuspended:
-    stateStr = "SUSPENDED";        
-  break;
+    stateStr = "SUSPENDED";
+    break;
 
   case eDeleted:
-    stateStr = "DELETED";        
-  break;
-  
+    stateStr = "DELETED";
+    break;
+
   default:
-    stateStr = "ERROR";        
+    stateStr = "ERROR";
     break;
   }
 
   return stateStr;
 }
 
-
-/* 
+/*
 ===============================================================================================
                                     DEBUG FUNCTIONS
 ================================================================================================
 */
-
 
 /**
  * @brief some nice in-depth debugging for I/O
@@ -750,13 +736,10 @@ void PrintIODebug()
 
   // INPUTS
 
-
   // OUTPUTS
-
 
   Serial.printf("\n--- END I/O DEBUG ---\n");
 }
-
 
 /**
  * @brief some nice in-depth debugging for serial
@@ -767,13 +750,10 @@ void PrintSerialDebug()
 
   // INPUTS
 
-
   // OUTPUTS
-
 
   Serial.printf("\n--- END SERIAL DEBUG ---\n");
 }
-
 
 /**
  * @brief scheudler debugging
@@ -787,16 +767,20 @@ void PrintSchedulerDebug()
   int uptime = esp_rtc_get_time_us() / 1000000;
 
   // gather task information
-  if (xHandleIORead != NULL) {
+  if (xHandleIORead != NULL)
+  {
     taskStates.push_back(eTaskGetState(xHandleIORead));
   }
-  if (xHandleSerialRead != NULL) {
+  if (xHandleSerialRead != NULL)
+  {
     taskStates.push_back(eTaskGetState(xHandleSerialRead));
   }
-  if (xHandleSerialWrite != NULL) {
+  if (xHandleSerialWrite != NULL)
+  {
     taskStates.push_back(eTaskGetState(xHandleSerialWrite));
   }
-  if (xHandleTractiveRead != NULL) {
+  if (xHandleTractiveRead != NULL)
+  {
     taskStates.push_back(eTaskGetState(xHandleTractiveRead));
   }
 
@@ -806,14 +790,15 @@ void PrintSchedulerDebug()
   taskRefreshRate.push_back(debugger.tractiveReadTaskCount - debugger.tractiveReadTaskPreviousCount);
 
   // make it usable
-  for (int i = 0; i < taskStates.size() - 1; ++i) {
-    taskStatesStrings.push_back(TaskStateToString(taskStates.at(i)));        
+  for (int i = 0; i < taskStates.size() - 1; ++i)
+  {
+    taskStatesStrings.push_back(TaskStateToString(taskStates.at(i)));
   }
 
   // print it
   Serial.printf("uptime: %d | read io:<%d Hz> (%d) | read serial:<%d Hz> (%d) | write serial:<%d Hz> (%d) | tractive update: <%d Hz> (%d) \r",
-    uptime, taskRefreshRate.at(0), debugger.ioReadTaskCount, taskRefreshRate.at(1), debugger.serialReadTaskCount,
-    taskRefreshRate.at(2), debugger.serialWriteTaskCount, taskRefreshRate.at(3), debugger.tractiveReadTaskCount);
+                uptime, taskRefreshRate.at(0), debugger.ioReadTaskCount, taskRefreshRate.at(1), debugger.serialReadTaskCount,
+                taskRefreshRate.at(2), debugger.serialWriteTaskCount, taskRefreshRate.at(3), debugger.tractiveReadTaskCount);
 
   // update counters
   debugger.ioReadTaskPreviousCount = debugger.ioReadTaskCount;
