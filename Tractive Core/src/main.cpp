@@ -2,8 +2,8 @@
  * @file main.cpp
  * @author dom gasperini
  * @brief tractive core
- * @version 1.6
- * @date 2024-01-22
+ * @version 1.6.1
+ * @date 2024-02-23
  *
  * @ref https://espressif-docs.readthedocs-hosted.com/projects/arduino-esp32/en/latest/libraries.html#apis      (api and hal docs)
  * @ref https://docs.espressif.com/projects/esp-idf/en/latest/esp32s3/_images/ESP32-S3_DevKitC-1_pinlayout.jpg  (pinout & overview)
