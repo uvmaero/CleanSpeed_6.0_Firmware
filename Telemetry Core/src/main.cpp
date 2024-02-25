@@ -18,10 +18,13 @@
 
 #include <Arduino.h>
 #include <Wire.h>
+#include <SPI.h>
 #include "driver/twai.h"
 #include "rtc.h"
 #include "rtc_clk_common.h"
 #include <vector>
+
+#include "LoRa.h"
 
 #include <data_types.h>
 #include <pin_config.h>
@@ -226,14 +229,17 @@ SemaphoreHandle_t xMutex = NULL;
 
 // RTOS Task Handles
 TaskHandle_t xHandleIORead = NULL;
-TaskHandle_t xHandleSerialRead = NULL;
-TaskHandle_t xHandleSerialWrite = NULL;
+TaskHandle_t xHandleDataRead = NULL;
+TaskHandle_t xHandleDataWrite = NULL;
 TaskHandle_t xHandleTractiveRead = NULL;
 
 TaskHandle_t xHandleDebug = NULL;
 
 // Hardware Timers
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
+
+// SPI
+SPIClass *hspi = NULL;
 
 // GPS
 
@@ -249,8 +255,8 @@ portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 
 // tasks
 void IOReadTask(void *pvParameters);
-void SerialReadTask(void *pvParameters);
-void SerialWriteTask(void *pvParameters);
+void DataReadTask(void *pvParameters);
+void DataWriteTask(void *pvParameters);
 void TractiveReadTask(void *pvParameters);
 void DebugTask(void *pvParameters);
 
@@ -284,7 +290,6 @@ void setup()
     bool imuActive = false;
     bool rpiComActive = false;
     bool loraActive = false;
-    bool serialActive = false;
     bool i2cActive = false;
   };
   Setup setup;
@@ -292,6 +297,7 @@ void setup()
   // ----------------------- initialize serial connection --------------------- //
   Serial.begin(9600);
   Serial.printf("\n\n|--- STARTING SETUP ---|\n\n");
+
   // -------------------------------------------------------------------------- //
 
   // ----------------------- initialize i2c connection ----------------------- //
@@ -307,6 +313,19 @@ void setup()
   {
     Serial.printf("TRACTIVE CONNECTION INIT [ FAILED ]\n");
   }
+  // -------------------------------------------------------------------------- //
+
+  // ----------------------- initialize spi connection ----------------------- //
+  // init spi
+  hspi = new SPIClass(HSPI);
+  hspi->begin(SPI_SCLK, SPI_MISO, SPI_MOSI, SPI_SS);
+
+  // set up slave select pins as outputs as the Arduino API
+  // doesn't handle automatically pulling SS low
+  pinMode(hspi->pinSS(), OUTPUT); // HSPI SS
+
+  Serial.printf("SPI INIT [ SUCCESS ]\n");
+  setup.loraActive;
   // -------------------------------------------------------------------------- //
 
   // -------------------------- initialize GPIO ------------------------------ //
@@ -342,16 +361,21 @@ void setup()
   // -------------------------------------------------------------------------- //
 
   // --------------------- initialize RPi Connection -------------------------- //
-
-  Serial.printf("RPi INIT [ SUCCESS ]\n");
+  Serial1.begin(9600, 134217756U, RPI_RX_PIN, RPI_TX_PIN);
   setup.rpiComActive = true;
-  setup.serialActive = true;
+  Serial.printf("RPi INIT [ SUCCESS ]\n");
   // -------------------------------------------------------------------------- //
 
   // -------------------------- initialize LoRa ------------------------------- //
-
-  Serial.printf("LORA INIT [ SUCCESS ]\n");
-  setup.loraActive = true;
+  if (LoRa.begin(915E6)) // US frequency band
+  {
+    Serial.printf("LORA INIT [ SUCCESS ]\n");
+    setup.loraActive = true;
+  }
+  else
+  {
+    Serial.printf("LORA INIT [ FAILED ]\n");
+  }
   // -------------------------------------------------------------------------- //
 
   // -------------------------- initialize GPS -------------------------------- //
@@ -373,8 +397,9 @@ void setup()
 
   // task setup status
   Serial.printf("\nTask Setup Status:\n");
-  Serial.printf("I/O TASK SETUP: %s\n", setup.ioActive ? "COMPLETE" : "FAILED");
-  Serial.printf("SERIAL TASK SETUP: %s\n", setup.ioActive ? "COMPLETE" : "FAILED");
+  Serial.printf("I/O READ TASK SETUP: %s\n", setup.ioActive ? "COMPLETE" : "FAILED");
+  Serial.printf("DATA READ TASK SETUP: %s\n", (setup.rpiComActive && setup.loraActive) ? "COMPLETE" : "FAILED");
+  Serial.printf("DATA WRITE TASK SETUP: %s\n", (setup.gpsActive && setup.imuActive) ? "COMPLETE" : "FAILED");
 
   if (xMutex != NULL)
   {
@@ -389,10 +414,14 @@ void setup()
       xTaskCreatePinnedToCore(TractiveReadTask, "Tractive-Read", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleTractiveRead, 0);
     }
 
-    if (setup.rpiComActive && setup.gpsActive && setup.imuActive && setup.loraActive && setup.serialActive)
+    if (setup.rpiComActive && setup.loraActive)
     {
-      xTaskCreatePinnedToCore(SerialReadTask, "Serial-Read", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleSerialRead, 1);
-      xTaskCreatePinnedToCore(SerialWriteTask, "Serial-Write", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleSerialWrite, 1);
+      xTaskCreatePinnedToCore(DataWriteTask, "Data-Write", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleDataWrite, 1);
+    }
+
+    if (setup.gpsActive && setup.imuActive)
+    {
+      xTaskCreatePinnedToCore(DataReadTask, "Data-Read", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleDataRead, 1);
     }
 
     if (debugger.debugEnabled == true)
@@ -420,15 +449,15 @@ void setup()
   else
     Serial.printf("TRACTIVE READ TASK STATUS: DISABLED!\n");
 
-  if (xHandleSerialRead != NULL)
-    Serial.printf("SERIAL READ TASK STATUS %s\n", TaskStateToString(eTaskGetState(xHandleSerialRead)));
+  if (xHandleDataRead != NULL)
+    Serial.printf("DATA READ TASK STATUS %s\n", TaskStateToString(eTaskGetState(xHandleDataRead)));
   else
-    Serial.printf("SERIAL READ TASK STAUS: DISABLED!\n");
+    Serial.printf("DATA READ TASK STAUS: DISABLED!\n");
 
-  if (xHandleSerialWrite != NULL)
-    Serial.printf("SERIAL WRITE TASK STATUS %s\n", TaskStateToString(eTaskGetState(xHandleSerialWrite)));
+  if (xHandleDataWrite != NULL)
+    Serial.printf("DATA WRITE TASK STATUS %s\n", TaskStateToString(eTaskGetState(xHandleDataWrite)));
   else
-    Serial.printf("SERIAL WRTIE TASK STAUS: DISABLED!\n");
+    Serial.printf("DATA WRTIE TASK STAUS: DISABLED!\n");
 
   // scheduler status
   if (xTaskGetSchedulerState() == taskSCHEDULER_RUNNING)
@@ -495,7 +524,7 @@ void IOReadTask(void *pvParameters)
  * @brief reads the various serial busses
  * @param pvParameters parameters passed to task
  */
-void SerialReadTask(void *pvParameters)
+void DataReadTask(void *pvParameters)
 {
   for (;;)
   {
@@ -524,15 +553,19 @@ void SerialReadTask(void *pvParameters)
  * @brief writes to the various serial busses
  * @param pvParameters parameters passed to task
  */
-void SerialWriteTask(void *pvParameters)
+void DataWriteTask(void *pvParameters)
 {
   for (;;)
   {
     if (xSemaphoreTake(xMutex, (TickType_t)10) == pdTRUE)
     {
       // LoRa update
+      LoRa.beginPacket();
+      LoRa.write((uint8_t *)&telemetryCoreData, sizeof(telemetryCoreData));
+      LoRa.endPacket();
 
       // HUD update
+      Serial.write((uint8_t *)&telemetryCoreData, sizeof(telemetryCoreData));
 
       // release mutex!
       xSemaphoreGive(xMutex);
@@ -771,13 +804,13 @@ void PrintSchedulerDebug()
   {
     taskStates.push_back(eTaskGetState(xHandleIORead));
   }
-  if (xHandleSerialRead != NULL)
+  if (xHandleDataRead != NULL)
   {
-    taskStates.push_back(eTaskGetState(xHandleSerialRead));
+    taskStates.push_back(eTaskGetState(xHandleDataRead));
   }
-  if (xHandleSerialWrite != NULL)
+  if (xHandleDataWrite != NULL)
   {
-    taskStates.push_back(eTaskGetState(xHandleSerialWrite));
+    taskStates.push_back(eTaskGetState(xHandleDataWrite));
   }
   if (xHandleTractiveRead != NULL)
   {
