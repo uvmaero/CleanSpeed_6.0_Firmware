@@ -1,17 +1,27 @@
 /**
  * @file dataTypes.h
- * @author Dominic Gasperini
+ * @author dominic gasperini
  * @brief all of the unique data types used to manage the state of the car
  * @version 1.0
- * @date 2023-05-04
- * 
- * @copyright Copyright (c) 2023
- * 
+ * @date 2024-01-23
  */
 
 
-// includes
+/*
+===============================================================================================
+                                    Includes 
+===============================================================================================
+*/
+
+
 #include <esp_err.h>
+
+
+/*
+===============================================================================================
+                                    Data Types 
+===============================================================================================
+*/
 
 
 /**
@@ -72,12 +82,10 @@ typedef struct TractiveCoreData
     {
         bool imdFault;
         bool bmsFault;
+        bool vicoreFault;
 
         float coolingTempIn;
         float coolingTempOut;
-        float vicoreTemp;
-
-        float glvReading;
 
         float frontWheelsSpeed;
         int16_t frontWheelSpeedCount;
@@ -90,7 +98,7 @@ typedef struct TractiveCoreData
         float blWheelSpeed;
         int16_t blWheelSpeedCount;
         int16_t blWheelSpeedTime;
-    } criticalSensors;
+    } sensors;
     
     struct Inputs
     {
@@ -103,14 +111,13 @@ typedef struct TractiveCoreData
 
     struct Outputs
     {
-        DriveMode driveModeLED;
+        bool vicoreEnable;
 
         bool brakeLightEnable;
 
         bool fansEnable;
 
         bool buzzerEnable;
-        int buzzerCounter;
     } outputs;
 
     struct Orion
@@ -205,22 +212,28 @@ typedef struct Debugger
     bool debugEnabled;
     bool serial_debugEnabled;
     bool IO_debugEnabled;
+    bool twai_debugEnable;
     bool scheduler_debugEnable;
 
     // I/O data
     TelemetryCoreData IO_data;
 
-    // precharge data
-    PrechargeStates prechargeState;
-
     // scheduler data
     int ioReadTaskCount;
     int serialReadTaskCount;
     int serialWriteTaskCount;
+    int tractiveReadTaskCount;
+    int twaiReadTaskCount;
+
+    int ioReadTaskPreviousCount;
+    int serialReadTaskPreviousCount;
+    int serialWriteTaskPreviousCount;
+    int tractiveReadTaskPreviousCount;
+    int twaiReadTaskPreviousCount;
 } Debugger;
 
 
 // debug functions
-void PrintDebug();
 void PrintIODebug();
 void PrintSerialDebug();
+void PrintSchedulerDebug();

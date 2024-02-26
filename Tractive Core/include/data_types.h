@@ -2,16 +2,26 @@
  * @file dataTypes.h
  * @author Dominic Gasperini
  * @brief all of the unique data types used to manage the state of the car
- * @version 1.0
- * @date 2023-05-04
- * 
- * @copyright Copyright (c) 2023
- * 
+ * @version 1.6
+ * @date 2024-01-22
  */
 
 
-// includes
+/*
+===============================================================================================
+                                    Includes 
+===============================================================================================
+*/
+
+
 #include <esp_err.h>
+
+
+/*
+===============================================================================================
+                                    Data Types
+===============================================================================================
+*/
 
 
 /**
@@ -72,12 +82,10 @@ typedef struct TractiveCoreData
     {
         bool imdFault;
         bool bmsFault;
+        bool vicoreFault;
 
         float coolingTempIn;
         float coolingTempOut;
-        float vicoreTemp;
-
-        float glvReading;
 
         float frontWheelsSpeed;
         int16_t frontWheelSpeedCount;
@@ -103,14 +111,13 @@ typedef struct TractiveCoreData
 
     struct Outputs
     {
-        DriveMode driveModeLED;
+        bool vicoreEnable;
 
         bool brakeLightEnable;
 
         bool fansEnable;
 
         bool buzzerEnable;
-        int buzzerCounter;
     } outputs;
 
     struct Orion
@@ -146,6 +153,11 @@ typedef struct Debugger
     // TWAI data
     esp_err_t TWAI_rinehartCtrlResult;
     esp_err_t TWAI_prechargeCtrlResult;
+    esp_err_t telemetryTractive1MessageResult;
+    esp_err_t telemetryTractive2MessageResult;
+    esp_err_t telemetrySensorMessageResult;
+    esp_err_t telemetryInputsMessageMessageResult;
+    esp_err_t telemetryOutputsMessageMessageResult;
     uint8_t TWAI_rinehartCtrlMessage[8];
     uint8_t TWAI_prechargeCtrlMessage[8];
 
@@ -161,10 +173,18 @@ typedef struct Debugger
     int twaiReadTaskCount;
     int twaiWriteTaskCount;
     int prechargeTaskCount;
+    int telemetryUpdateTaskCount;
+
+    int ioReadTaskPreviousCount;
+    int ioWriteTaskPreviousCount;
+    int twaiReadTaskPreviousCount;
+    int twaiWriteTaskPreviousCount;
+    int prechargeTaskPreviousCount;
+    int telemetryUpdateTaskPreviousCount;
 } Debugger;
 
 
 // debug functions
-void PrintDebug();
 void PrintTWAIDebug();
 void PrintIODebug();
+void PrintScheduler();
