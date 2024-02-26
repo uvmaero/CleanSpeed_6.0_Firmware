@@ -239,7 +239,7 @@ TaskHandle_t xHandleDebug = NULL;
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 
 // SPI
-SPIClass *hspi = NULL;
+SPIClass hspi(HSPI);
 
 // GPS
 
@@ -317,12 +317,11 @@ void setup()
 
   // ----------------------- initialize spi connection ----------------------- //
   // init spi
-  hspi = new SPIClass(HSPI);
-  hspi->begin(SPI_SCLK, SPI_MISO, SPI_MOSI, SPI_SS);
+  hspi.begin(SPI_SCLK, SPI_MISO, SPI_MOSI, SPI_SS);
 
   // set up slave select pins as outputs as the Arduino API
   // doesn't handle automatically pulling SS low
-  pinMode(hspi->pinSS(), OUTPUT); // HSPI SS
+  pinMode(hspi.pinSS(), OUTPUT); // HSPI SS
 
   Serial.printf("SPI INIT [ SUCCESS ]\n");
   setup.loraActive;
@@ -367,6 +366,8 @@ void setup()
   // -------------------------------------------------------------------------- //
 
   // -------------------------- initialize LoRa ------------------------------- //
+  LoRa.setSPI(hspi);
+  LoRa.setPins(SPI_SS);
   if (LoRa.begin(915E6)) // US frequency band
   {
     Serial.printf("LORA INIT [ SUCCESS ]\n");
@@ -829,7 +830,7 @@ void PrintSchedulerDebug()
   }
 
   // print it
-  Serial.printf("uptime: %d | read io:<%d Hz> (%d) | read serial:<%d Hz> (%d) | write serial:<%d Hz> (%d) | tractive update: <%d Hz> (%d) \r",
+  Serial.printf("uptime: %d | read io:<%d Hz> (%d) | read data:<%d Hz> (%d) | write data:<%d Hz> (%d) | tractive update: <%d Hz> (%d) \r",
                 uptime, taskRefreshRate.at(0), debugger.ioReadTaskCount, taskRefreshRate.at(1), debugger.serialReadTaskCount,
                 taskRefreshRate.at(2), debugger.serialWriteTaskCount, taskRefreshRate.at(3), debugger.tractiveReadTaskCount);
 
