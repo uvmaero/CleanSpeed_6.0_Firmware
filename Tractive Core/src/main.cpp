@@ -2,8 +2,8 @@
  * @file main.cpp
  * @author dom gasperini
  * @brief tractive core
- * @version 1.6.1
- * @date 2024-02-23
+ * @version 1.7.0
+ * @date 2024-03-05
  *
  * @ref https://espressif-docs.readthedocs-hosted.com/projects/arduino-esp32/en/latest/libraries.html#apis      (api and hal docs)
  * @ref https://docs.espressif.com/projects/esp-idf/en/latest/esp32s3/_images/ESP32-S3_DevKitC-1_pinlayout.jpg  (pinout & overview)
@@ -372,6 +372,9 @@ void setup()
 
   pinMode(BUZZER_PIN, OUTPUT);
 
+  gpio_set_drive_capability((gpio_num_t)BRAKE_LIGHT_PIN, GPIO_DRIVE_CAP_3);
+  gpio_set_drive_capability((gpio_num_t)FAN_ENABLE_PIN, GPIO_DRIVE_CAP_3);
+
   Serial.printf("GPIO INIT [ SUCCESS ]\n");
   setup.ioActive = true;
   // -------------------------------------------------------------------------- //
@@ -597,7 +600,7 @@ void IOReadTask(void *pvParameters)
       }
 
       // faults
-      if (digitalRead(BMS_FAULT_PIN) == LOW)
+      if (digitalRead(BMS_FAULT_PIN) == HIGH)
       {
         tractiveCoreData.sensors.bmsFault = false;
       }
@@ -606,7 +609,7 @@ void IOReadTask(void *pvParameters)
         tractiveCoreData.sensors.bmsFault = true;
       }
 
-      if (digitalRead(IMD_FAULT_PIN) == LOW)
+      if (digitalRead(IMD_FAULT_PIN) == HIGH)
       {
         tractiveCoreData.sensors.imdFault = false;
       }
@@ -1566,36 +1569,37 @@ void PrintIODebug()
 {
   Serial.printf("\n--- START I/O DEBUG ---\n");
 
-  // TODO: write/fix this
-
   // // INPUTS
   // // pedal 0 & 1
-  // Serial.printf("Pedal 0: %d\tPedal 1: %d\n", debugger.IO_data.inputs.pedal0, debugger.IO_data.inputs.pedal1);
+  Serial.printf("Pedal 0: %d\tPedal 1: %d\n", debugger.IO_data.inputs.pedal0, debugger.IO_data.inputs.pedal1);
 
   // // brake 0 & 1
-  // Serial.printf("Brake Front: %d\tBrake Rear: %d\n", debugger.IO_data.inputs.brakeFront, debugger.IO_data.inputs.brakeRear);
+  Serial.printf("Brake Front: %d\tBrake Rear: %d\n", debugger.IO_data.inputs.frontBrake, debugger.IO_data.inputs.rearBrake);
 
   // // brake regen
-  // Serial.printf("Brake Regen: %d\n", debugger.IO_data.inputs.brakeRegen);
+  Serial.printf("Brake Regen: %d\n", debugger.IO_data.tractive.brakeRegen);
 
   // // coast regen
-  // Serial.printf("Coast Regen: %d\n", debugger.IO_data.inputs.coastRegen);
+  Serial.printf("Coast Regen: %d\n", debugger.IO_data.tractive.coastRegen);
 
   // // faults
-  // Serial.printf("Faults: IMD: %d | BMS: %d\n", tractiveCoreData.tractive.imdFault, tractiveCoreData.tractive.bmsFault);
+  Serial.printf("Faults: IMD: %d | BMS: %d\n", tractiveCoreData.sensors.imdFault, tractiveCoreData.sensors.bmsFault);
 
   // // rtd
-  // Serial.printf("Ready to Drive: %s\n", tractiveCoreData.tractive.readyToDrive ? "READY" : "DEACTIVATED");
+  Serial.printf("Ready to Drive: %s\n", tractiveCoreData.tractive.readyToDrive ? "READY" : "DEACTIVATED");
 
   // // inverter
-  // Serial.printf("Inverter Enable: %s\n", tractiveCoreData.tractive.enableInverter ? "ENABLED" : "DISABLED");
+  Serial.printf("Inverter Enable: %s\n", tractiveCoreData.tractive.enableInverter ? "ENABLED" : "DISABLED");
 
   // // OUTPUTS
-  // Serial.printf("Buzzer Status: %s, Buzzer Counter: %d\n", debugger.IO_data.outputs.buzzerActive ? "On" : "Off", debugger.IO_data.outputs.buzzerCounter);
+  Serial.printf("Buzzer Status: %s\n", debugger.IO_data.outputs.buzzerEnable ? "On" : "Off");
 
-  // Serial.printf("Commanded Torque: %d\n", tractiveCoreData.tractive.commandedTorque);
+  Serial.printf("Commanded Torque: %d\n", tractiveCoreData.tractive.commandedTorque);
 
-  // Serial.printf("Drive Mode: %d\n", (int)tractiveCoreData.tractive.driveMode);
+  Serial.printf("Drive Mode: %d\n", (int)tractiveCoreData.tractive.driveMode);
+
+  Serial.printf("Brake Light: %d\n", (int)tractiveCoreData.outputs.brakeLightEnable);
+  Serial.printf("Fan Enable: %d\n", (int)tractiveCoreData.outputs.fansEnable);
 
   Serial.printf("\n--- END I/O DEBUG ---\n");
 }
