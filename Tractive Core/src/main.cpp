@@ -47,6 +47,7 @@
 #define PEDAL_MIN 0       // minimum value the pedals can read as
 #define PEDAL_MAX 255     // maximum value a pedal can read as
 #define PEDAL_DEADBAND 15 // ~5% of PEDAL_MAX
+#define PEDAL_DELTA 0.15  // difference between pedal value for cutoff threshold computed by percent difference
 
 #define MAX_TORQUE 225        // MAX TORQUE RINEHART CAN ACCEPT, DO NOT EXCEED 230!!!
 #define MAX_REVERSE_TORQUE 25 // for limiting speed while in reverse
@@ -820,15 +821,15 @@ void TWAIReadTask(void *pvParameters)
         }
       }
 
+      // debugging
+      if (debugger.debugEnabled)
+      {
+        // scheduler counter update
+        debugger.twaiReadTaskCount++;
+      }
+
       // release mutex!
       xSemaphoreGive(xMutex);
-    }
-
-    // debugging
-    if (debugger.debugEnabled)
-    {
-      // scheduler counter update
-      debugger.twaiReadTaskCount++;
     }
 
     // limit refresh rate
@@ -926,9 +927,6 @@ void TWAIWriteTask(void *pvParameters)
         break;
       }
 
-      // release mutex!
-      xSemaphoreGive(xMutex);
-
       // queue all messages for transmission
       esp_err_t rinehartCtrlResult = twai_transmit(&rinehartMessage, pdMS_TO_TICKS(TWAI_BLOCK_DELAY));
       esp_err_t prechargeCtrlMessageResult = twai_transmit(&prechargeCtrlMessage, pdMS_TO_TICKS(TWAI_BLOCK_DELAY));
@@ -953,6 +951,9 @@ void TWAIWriteTask(void *pvParameters)
         // scheduler counter update
         debugger.twaiWriteTaskCount++;
       }
+
+      // release mutex!
+      xSemaphoreGive(xMutex);
     }
 
     // limit task refresh rate
@@ -1075,14 +1076,14 @@ void TelemetryUpdateTask(void *pvParameters)
       Wire.write((uint8_t *)&tractiveCoreData, sizeof(tractiveCoreData));
       Wire.endTransmission();
 
+      // debugging
+      if (debugger.debugEnabled)
+      {
+        debugger.telemetryUpdateTaskCount++;
+      }
+
       // release mutex!
       xSemaphoreGive(xMutex);
-    }
-
-    // debugging
-    if (debugger.debugEnabled)
-    {
-      debugger.telemetryUpdateTaskCount++;
     }
 
     // limit task refresh rate
@@ -1185,7 +1186,7 @@ void GetCommandedTorque()
 
   // --- safety checks --- //
 
-  // driving in reverse
+  // while driving in reverse
   if (tractiveCoreData.tractive.driveDirection == true)
   { // forward = false | reverse = true
     if (commandedTorque >= MAX_REVERSE_TORQUE)
@@ -1202,7 +1203,7 @@ void GetCommandedTorque()
 
   // pedal difference
   int pedalDifference = tractiveCoreData.inputs.pedal0 - tractiveCoreData.inputs.pedal1;
-  if (_abs(pedalDifference) > (PEDAL_MAX * 0.15))
+  if (_abs(pedalDifference) > (PEDAL_MAX * PEDAL_DELTA))
   {
     commandedTorque = 0;
   }
