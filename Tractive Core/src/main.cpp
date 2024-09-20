@@ -268,7 +268,7 @@ void DebugTask(void *pvParameters);
 // helpers
 void GetCommandedTorque();
 uint16_t CalculateThrottleResponse(uint16_t value);
-uint16_t TractionControl(uint16_t value);
+uint16_t TractionControl(uint16_t commandedTorque);
 
 void FrontWheelSpeedCalculator();
 void RearRightWheelSpeedCalculator();
@@ -295,7 +295,7 @@ void setup()
     vTaskDelay(3000);
   }
 
-  // setup managment struct
+  // setup management struct
   struct setup
   {
     bool ioActive = false;
@@ -448,7 +448,7 @@ void setup()
     Serial.printf("FAILED TO INIT MUTEX!\nHALTING OPERATIONS!");
     while (1)
     {
-    };
+    }
   }
 
   // task status
@@ -498,7 +498,7 @@ void setup()
     Serial.printf("\nScheduler STATUS: FAILED\nHALTING OPERATIONS");
     while (1)
     {
-    };
+    }
   }
   Serial.printf("\n\n|--- END SETUP ---|\n\n");
   // ---------------------------------------------------------------------------------------- //
