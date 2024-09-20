@@ -580,6 +580,7 @@ void IOReadTask(void *pvParameters)
       // drive mode button
       if (digitalRead(DRIVE_MODE_BUTTON_PIN) == LOW)
       {
+        //Cycle the drive mode from Slow -> Eco -> Fast -> Slow -> etc.
         switch (tractiveCoreData.tractive.driveMode)
         {
         case SLOW:
@@ -767,7 +768,7 @@ void TWAIReadTask(void *pvParameters)
       twai_message_t incomingMessage;
       uint8_t tmp1, tmp2;
 
-      // if rx queue is full clear it (this is bad, implement twai message filtering)
+      // if rx queue is full clear it (this is bad, TODO: implement twai message filtering)
       uint32_t alerts;
       twai_read_alerts(&alerts, pdMS_TO_TICKS(TWAI_BLOCK_DELAY));
       if (alerts & TWAI_ALERT_RX_QUEUE_FULL)
@@ -785,7 +786,7 @@ void TWAIReadTask(void *pvParameters)
         {
         // Rinehart: voltage information
         case RINE_VOLT_INFO_ADDR:
-          // rinehart voltage is spread across the first 2 bytes
+          // Rinehart voltage is spread across the first 2 bytes
           tmp1 = incomingMessage.data[0];
           tmp2 = incomingMessage.data[1];
 
@@ -1098,7 +1099,7 @@ void DebugTask(void *pvParameters)
 {
   for (;;)
   {
-    // CAN
+    // CAN (TWAI)
     if (debugger.TWAI_debugEnabled)
     {
       PrintTWAIDebug();
