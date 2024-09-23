@@ -435,7 +435,7 @@ void setup()
     Serial.printf("FAILED TO INIT MUTEX!\nHALTING OPERATIONS!");
     while (1)
     {
-    };
+    }
   }
 
   // task status
@@ -475,7 +475,7 @@ void setup()
     Serial.printf("\nScheduler STATUS: FAILED\nHALTING OPERATIONS");
     while (1)
     {
-    };
+    }
   }
   Serial.printf("\n|--- END SETUP ---|\n\n");
   // ---------------------------------------------------------------------------------------- //
@@ -497,6 +497,7 @@ void IOReadTask(void *pvParameters)
   {
     if (xSemaphoreTake(xMutex, (TickType_t)10) == pdTRUE)
     {
+      //TODO:
       // dampers
 
       // tire temps
@@ -531,6 +532,7 @@ void DataReadTask(void *pvParameters)
   {
     if (xSemaphoreTake(xMutex, (TickType_t)10) == pdTRUE)
     {
+      //TODO:
       // GPS
 
       // IMU
