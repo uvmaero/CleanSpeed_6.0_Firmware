@@ -47,7 +47,11 @@
 // general
 #define SERIAL_BAUD_RATE 9600        // baud rate
 #define TELEMETRY_CORE_I2C_ADDR 0x10 // address for i2c in hex
-#define I2C_FREQUENCY 100000         // frequency of bus
+#define I2C_FREQUENCY 100000 // frequency of bus
+
+// port aliases
+#define SERIAL_DEBUG Serial
+#define HUD Serial1
 
 // debug
 #define ENABLE_DEBUG true // master debug message control
@@ -295,8 +299,8 @@ void setup()
   Setup setup;
 
   // ----------------------- initialize serial connection --------------------- //
-  Serial.begin(9600);
-  Serial.printf("\n\n|--- STARTING SETUP ---|\n\n");
+  SERIAL_DEBUG.begin(9600);
+  SERIAL_DEBUG.printf("\n\n|--- STARTING SETUP ---|\n\n");
 
   // -------------------------------------------------------------------------- //
 
@@ -306,12 +310,12 @@ void setup()
   {
     Wire.setBufferSize(255); // change the buffer size to fit the data
 
-    Serial.printf("TRACTIVE CONNECTION INIT [ SUCCESS ]\n");
+    SERIAL_DEBUG.printf("TRACTIVE CONNECTION INIT [ SUCCESS ]\n");
     setup.i2cActive = true;
   }
   else
   {
-    Serial.printf("TRACTIVE CONNECTION INIT [ FAILED ]\n");
+    SERIAL_DEBUG.printf("TRACTIVE CONNECTION INIT [ FAILED ]\n");
   }
   // -------------------------------------------------------------------------- //
 
@@ -323,7 +327,7 @@ void setup()
   // doesn't handle automatically pulling SS low
   pinMode(hspi.pinSS(), OUTPUT); // HSPI SS
 
-  Serial.printf("SPI INIT [ SUCCESS ]\n");
+  SERIAL_DEBUG.printf("SPI INIT [ SUCCESS ]\n");
   setup.loraActive;
   // -------------------------------------------------------------------------- //
 
@@ -355,14 +359,14 @@ void setup()
 
   // outputs
 
-  Serial.printf("GPIO INIT [ SUCCESS ]\n");
+  SERIAL_DEBUG.printf("GPIO INIT [ SUCCESS ]\n");
   setup.ioActive = true;
   // -------------------------------------------------------------------------- //
 
   // --------------------- initialize RPi Connection -------------------------- //
-  Serial1.begin(9600, 134217756U, RPI_RX_PIN, RPI_TX_PIN);
+  HUD.begin(9600, 134217756U, RPI_RX_PIN, RPI_TX_PIN);
   setup.rpiComActive = true;
-  Serial.printf("RPi INIT [ SUCCESS ]\n");
+  SERIAL_DEBUG.printf("RPi INIT [ SUCCESS ]\n");
   // -------------------------------------------------------------------------- //
 
   // -------------------------- initialize LoRa ------------------------------- //
@@ -370,25 +374,25 @@ void setup()
   LoRa.setPins(SPI_SS);
   if (LoRa.begin(915E6)) // US frequency band
   {
-    Serial.printf("LORA INIT [ SUCCESS ]\n");
+    SERIAL_DEBUG.printf("LORA INIT [ SUCCESS ]\n");
     setup.loraActive = true;
   }
   else
   {
-    Serial.printf("LORA INIT [ FAILED ]\n");
+    SERIAL_DEBUG.printf("LORA INIT [ FAILED ]\n");
   }
   // -------------------------------------------------------------------------- //
 
   // -------------------------- initialize GPS -------------------------------- //
 
-  Serial.printf("GPS INIT [ SUCCESS ]\n");
+  SERIAL_DEBUG.printf("GPS INIT [ SUCCESS ]\n");
 
   setup.gpsActive = true;
   // -------------------------------------------------------------------------- //
 
   // -------------------------- initialize IMU -------------------------------- //
 
-  Serial.printf("IMU INIT [ SUCCESS ]\n");
+  SERIAL_DEBUG.printf("IMU INIT [ SUCCESS ]\n");
   setup.imuActive = true;
   // -------------------------------------------------------------------------- //
 
@@ -397,10 +401,10 @@ void setup()
   xMutex = xSemaphoreCreateMutex();
 
   // task setup status
-  Serial.printf("\nTask Setup Status:\n");
-  Serial.printf("I/O READ TASK SETUP: %s\n", setup.ioActive ? "COMPLETE" : "FAILED");
-  Serial.printf("DATA READ TASK SETUP: %s\n", (setup.rpiComActive && setup.loraActive) ? "COMPLETE" : "FAILED");
-  Serial.printf("DATA WRITE TASK SETUP: %s\n", (setup.gpsActive && setup.imuActive) ? "COMPLETE" : "FAILED");
+  SERIAL_DEBUG.printf("\nTask Setup Status:\n");
+  SERIAL_DEBUG.printf("I/O READ TASK SETUP: %s\n", setup.ioActive ? "COMPLETE" : "FAILED");
+  SERIAL_DEBUG.printf("DATA READ TASK SETUP: %s\n", (setup.rpiComActive && setup.loraActive) ? "COMPLETE" : "FAILED");
+  SERIAL_DEBUG.printf("DATA WRITE TASK SETUP: %s\n", (setup.gpsActive && setup.imuActive) ? "COMPLETE" : "FAILED");
 
   if (xMutex != NULL)
   {
@@ -432,52 +436,52 @@ void setup()
   }
   else
   {
-    Serial.printf("FAILED TO INIT MUTEX!\nHALTING OPERATIONS!");
+    SERIAL_DEBUG.printf("FAILED TO INIT MUTEX!\nHALTING OPERATIONS!");
     while (1)
     {
     }
   }
 
   // task status
-  Serial.printf("\nTask Status:\n");
+  SERIAL_DEBUG.printf("\nTask Status:\n");
   if (xHandleIORead != NULL)
-    Serial.printf("I/O READ TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandleIORead)));
+    SERIAL_DEBUG.printf("I/O READ TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandleIORead)));
   else
-    Serial.printf("I/O READ TASK STATUS: DISABLED!\n");
+    SERIAL_DEBUG.printf("I/O READ TASK STATUS: DISABLED!\n");
 
   if (xHandleTractiveRead != NULL)
-    Serial.printf("TRACTIVE READ TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandleTractiveRead)));
+    SERIAL_DEBUG.printf("TRACTIVE READ TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandleTractiveRead)));
   else
-    Serial.printf("TRACTIVE READ TASK STATUS: DISABLED!\n");
+    SERIAL_DEBUG.printf("TRACTIVE READ TASK STATUS: DISABLED!\n");
 
   if (xHandleDataRead != NULL)
-    Serial.printf("DATA READ TASK STATUS %s\n", TaskStateToString(eTaskGetState(xHandleDataRead)));
+    SERIAL_DEBUG.printf("DATA READ TASK STATUS %s\n", TaskStateToString(eTaskGetState(xHandleDataRead)));
   else
-    Serial.printf("DATA READ TASK STAUS: DISABLED!\n");
+    SERIAL_DEBUG.printf("DATA READ TASK STAUS: DISABLED!\n");
 
   if (xHandleDataWrite != NULL)
-    Serial.printf("DATA WRITE TASK STATUS %s\n", TaskStateToString(eTaskGetState(xHandleDataWrite)));
+    SERIAL_DEBUG.printf("DATA WRITE TASK STATUS %s\n", TaskStateToString(eTaskGetState(xHandleDataWrite)));
   else
-    Serial.printf("DATA WRTIE TASK STAUS: DISABLED!\n");
+    SERIAL_DEBUG.printf("DATA WRTIE TASK STAUS: DISABLED!\n");
 
   // scheduler status
   if (xTaskGetSchedulerState() == taskSCHEDULER_RUNNING)
   {
-    Serial.printf("\nScheduler Status: RUNNING\n");
+    SERIAL_DEBUG.printf("\nScheduler Status: RUNNING\n");
 
     // clock frequency
     rtc_cpu_freq_config_t clock_config;
     rtc_clk_cpu_freq_get_config(&clock_config);
-    Serial.printf("CPU Frequency: %dMHz\n", clock_config.freq_mhz);
+    SERIAL_DEBUG.printf("CPU Frequency: %dMHz\n", clock_config.freq_mhz);
   }
   else
   {
-    Serial.printf("\nScheduler STATUS: FAILED\nHALTING OPERATIONS");
+    SERIAL_DEBUG.printf("\nScheduler STATUS: FAILED\nHALTING OPERATIONS");
     while (1)
     {
     }
   }
-  Serial.printf("\n|--- END SETUP ---|\n\n");
+  SERIAL_DEBUG.printf("\n|--- END SETUP ---|\n\n");
   // ---------------------------------------------------------------------------------------- //
 }
 
@@ -568,7 +572,7 @@ void DataWriteTask(void *pvParameters)
       LoRa.endPacket();
 
       // HUD update
-      Serial.write((uint8_t *)&telemetryCoreData, sizeof(telemetryCoreData));
+      HUD.write((uint8_t *)&telemetryCoreData, sizeof(telemetryCoreData));
 
       // release mutex!
       xSemaphoreGive(xMutex);
@@ -768,13 +772,13 @@ String TaskStateToString(eTaskState state)
  */
 void PrintIODebug()
 {
-  Serial.printf("\n--- START I/O DEBUG ---\n");
+  SERIAL_DEBUG.printf("\n--- START I/O DEBUG ---\n");
 
   // INPUTS
 
   // OUTPUTS
 
-  Serial.printf("\n--- END I/O DEBUG ---\n");
+  SERIAL_DEBUG.printf("\n--- END I/O DEBUG ---\n");
 }
 
 /**
@@ -782,13 +786,13 @@ void PrintIODebug()
  */
 void PrintSerialDebug()
 {
-  Serial.printf("\n--- START SERIAL DEBUG ---\n");
+  SERIAL_DEBUG.printf("\n--- START SERIAL DEBUG ---\n");
 
   // INPUTS
 
   // OUTPUTS
 
-  Serial.printf("\n--- END SERIAL DEBUG ---\n");
+  SERIAL_DEBUG.printf("\n--- END SERIAL DEBUG ---\n");
 }
 
 /**
@@ -832,7 +836,7 @@ void PrintSchedulerDebug()
   }
 
   // print it
-  Serial.printf("uptime: %d | read io:<%d Hz> (%d) | read data:<%d Hz> (%d) | write data:<%d Hz> (%d) | tractive update: <%d Hz> (%d) \r",
+  SERIAL_DEBUG.printf("uptime: %d | read io:<%d Hz> (%d) | read data:<%d Hz> (%d) | write data:<%d Hz> (%d) | tractive update: <%d Hz> (%d) \r",
                 uptime, taskRefreshRate.at(0), debugger.ioReadTaskCount, taskRefreshRate.at(1), debugger.serialReadTaskCount,
                 taskRefreshRate.at(2), debugger.serialWriteTaskCount, taskRefreshRate.at(3), debugger.tractiveReadTaskCount);
 
