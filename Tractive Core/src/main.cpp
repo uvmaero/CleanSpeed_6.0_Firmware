@@ -87,6 +87,10 @@
 
 #define TASK_STACK_SIZE 20000 // in bytes
 
+// port aliases
+#define SERIAL_DEBUG Serial
+#define I2C_CONN Wire
+
 // debug
 #define ENABLE_DEBUG true // master debug message control
 
@@ -307,30 +311,30 @@ void setup()
   // -------------------------------------------------------------------------- //
 
   // ----------------------- initialize serial connection --------------------- //
-  Serial.begin(SERIAL_BAUD_RATE);
-  Serial.printf("\n\n|--- STARTING SETUP ---|\n\n");
+  SERIAL_DEBUG.begin(SERIAL_BAUD_RATE);
+  SERIAL_DEBUG.printf("\n\n|--- STARTING SETUP ---|\n\n");
   // -------------------------------------------------------------------------- //
 
   // ----------------------- initialize I2C connection --------------------- //
-  if (Wire.begin(I2C_RX_PIN, I2C_TX_PIN, I2C_FREQUENCY) == true)
+  if (I2C_CONN.begin(I2C_RX_PIN, I2C_TX_PIN, I2C_FREQUENCY) == true)
   {
-    Wire.setBufferSize(255);
+    I2C_CONN.setBufferSize(255);
 
     // test for telemetry connection
-    Wire.beginTransmission(TELEMETRY_CORE_I2C_ADDR);
-    if (Wire.endTransmission() == 0)
+    I2C_CONN.beginTransmission(TELEMETRY_CORE_I2C_ADDR);
+    if (I2C_CONN.endTransmission() == 0)
     {
-      Serial.printf("TELEMETRY CONNECTION INIT [ SUCCESS ]\n");
+      SERIAL_DEBUG.printf("TELEMETRY CONNECTION INIT [ SUCCESS ]\n");
       setup.i2cActive = true;
     }
     else
     {
-      Serial.printf("TELEMETRY CONNECTION INIT [ FAILED ]\n");
+      SERIAL_DEBUG.printf("TELEMETRY CONNECTION INIT [ FAILED ]\n");
     }
   }
   else
   {
-    Serial.printf("TELEMETRY INIT [ FAILED ]\n");
+    SERIAL_DEBUG.printf("TELEMETRY INIT [ FAILED ]\n");
   }
   // -------------------------------------------------------------------------- //
 
@@ -376,7 +380,7 @@ void setup()
   gpio_set_drive_capability((gpio_num_t)BRAKE_LIGHT_PIN, GPIO_DRIVE_CAP_3);
   gpio_set_drive_capability((gpio_num_t)FAN_ENABLE_PIN, GPIO_DRIVE_CAP_3);
 
-  Serial.printf("GPIO INIT [ SUCCESS ]\n");
+  SERIAL_DEBUG.printf("GPIO INIT [ SUCCESS ]\n");
   setup.ioActive = true;
   // -------------------------------------------------------------------------- //
 
@@ -384,12 +388,12 @@ void setup()
   // install TWAI driver
   if (twai_driver_install(&can_general_config, &can_timing_config, &can_filter_config) == ESP_OK)
   {
-    Serial.printf("TWAI DRIVER INSTALL [ SUCCESS ]\n");
+    SERIAL_DEBUG.printf("TWAI DRIVER INSTALL [ SUCCESS ]\n");
 
     // start CAN bus
     if (twai_start() == ESP_OK)
     {
-      Serial.printf("TWAI INIT [ SUCCESS ]\n");
+      SERIAL_DEBUG.printf("TWAI INIT [ SUCCESS ]\n");
       twai_reconfigure_alerts(TWAI_ALERT_ALL, NULL);
 
       setup.twaiActive = true;
@@ -397,13 +401,13 @@ void setup()
 
     else
     {
-      Serial.printf("TWAI INIT [ FAILED ]\n");
+      SERIAL_DEBUG.printf("TWAI INIT [ FAILED ]\n");
     }
   }
 
   else
   {
-    Serial.printf("TWAI DRIVER INSTALL [ FAILED ]\n");
+    SERIAL_DEBUG.printf("TWAI DRIVER INSTALL [ FAILED ]\n");
   }
   // --------------------------------------------------------------------------- //
 
@@ -412,9 +416,9 @@ void setup()
   xMutex = xSemaphoreCreateMutex();
 
   // task setup status
-  Serial.printf("\nTask Setup Status:\n");
-  Serial.printf("I/O TASK SETUP: %s\n", setup.ioActive ? "COMPLETE" : "FAILED");
-  Serial.printf("TWAI TASK SETUP: %s\n", setup.twaiActive ? "COMPLETE" : "FAILED");
+  SERIAL_DEBUG.printf("\nTask Setup Status:\n");
+  SERIAL_DEBUG.printf("I/O TASK SETUP: %s\n", setup.ioActive ? "COMPLETE" : "FAILED");
+  SERIAL_DEBUG.printf("TWAI TASK SETUP: %s\n", setup.twaiActive ? "COMPLETE" : "FAILED");
 
   // start tasks
   if (xMutex != NULL)
@@ -445,62 +449,62 @@ void setup()
   }
   else
   {
-    Serial.printf("FAILED TO INIT MUTEX!\nHALTING OPERATIONS!");
+    SERIAL_DEBUG.printf("FAILED TO INIT MUTEX!\nHALTING OPERATIONS!");
     while (1)
     {
     }
   }
 
   // task status
-  Serial.printf("\nTask Status:\n");
+  SERIAL_DEBUG.printf("\nTask Status:\n");
   if (xHandleIORead != NULL)
-    Serial.printf("I/O READ TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandleIORead)));
+    SERIAL_DEBUG.printf("I/O READ TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandleIORead)));
   else
-    Serial.printf("I/O READ TASK STATUS: DISABLED!\n");
+    SERIAL_DEBUG.printf("I/O READ TASK STATUS: DISABLED!\n");
 
   if (xHandleIOWrite != NULL)
-    Serial.printf("I/O WRITE TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandleIOWrite)));
+    SERIAL_DEBUG.printf("I/O WRITE TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandleIOWrite)));
   else
-    Serial.printf("I/O WRITE TASK STATUS: DISABLED!\n");
+    SERIAL_DEBUG.printf("I/O WRITE TASK STATUS: DISABLED!\n");
 
   if (xHandleTWAIRead != NULL)
-    Serial.printf("TWAI READ TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandleTWAIRead)));
+    SERIAL_DEBUG.printf("TWAI READ TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandleTWAIRead)));
   else
-    Serial.printf("TWAI READ TASK STATUS: DISABLED!\n");
+    SERIAL_DEBUG.printf("TWAI READ TASK STATUS: DISABLED!\n");
 
   if (xHandleTWAIWrite != NULL)
-    Serial.printf("TWAI WRITE TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandleTWAIWrite)));
+    SERIAL_DEBUG.printf("TWAI WRITE TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandleTWAIWrite)));
   else
-    Serial.printf("TWAI WRITE TASK STATUS: DISABLED!\n");
+    SERIAL_DEBUG.printf("TWAI WRITE TASK STATUS: DISABLED!\n");
 
   if (xHandlePrecharge != NULL)
-    Serial.printf("PRECHARGE TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandlePrecharge)));
+    SERIAL_DEBUG.printf("PRECHARGE TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandlePrecharge)));
   else
-    Serial.printf("PRECHARGE TASK STATUS: DISABLED!\n");
+    SERIAL_DEBUG.printf("PRECHARGE TASK STATUS: DISABLED!\n");
 
   if (xHandleTelemetryUpdate != NULL)
-    Serial.printf("TELEMETRY UPDATE TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandleTelemetryUpdate)));
+    SERIAL_DEBUG.printf("TELEMETRY UPDATE TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandleTelemetryUpdate)));
   else
-    Serial.printf("TELEMETRY UPDATE TASK STAUS: DISABLED!\n");
+    SERIAL_DEBUG.printf("TELEMETRY UPDATE TASK STAUS: DISABLED!\n");
 
   // scheduler status
   if (xTaskGetSchedulerState() == taskSCHEDULER_RUNNING)
   {
-    Serial.printf("\nScheduler Status: RUNNING\n");
+    SERIAL_DEBUG.printf("\nScheduler Status: RUNNING\n");
 
     // clock frequency
     rtc_cpu_freq_config_t clock_config;
     rtc_clk_cpu_freq_get_config(&clock_config);
-    Serial.printf("CPU Frequency: %dMHz\n", clock_config.freq_mhz);
+    SERIAL_DEBUG.printf("CPU Frequency: %dMHz\n", clock_config.freq_mhz);
   }
   else
   {
-    Serial.printf("\nScheduler STATUS: FAILED\nHALTING OPERATIONS");
+    SERIAL_DEBUG.printf("\nScheduler STATUS: FAILED\nHALTING OPERATIONS");
     while (1)
     {
     }
   }
-  Serial.printf("\n\n|--- END SETUP ---|\n\n");
+  SERIAL_DEBUG.printf("\n\n|--- END SETUP ---|\n\n");
   // ---------------------------------------------------------------------------------------- //
 }
 
@@ -1073,9 +1077,9 @@ void TelemetryUpdateTask(void *pvParameters)
     if (xSemaphoreTake(xMutex, (TickType_t)10) == pdTRUE)
     {
       // write to i2c bus
-      Wire.beginTransmission(TELEMETRY_CORE_I2C_ADDR);
-      Wire.write((uint8_t *)&tractiveCoreData, sizeof(tractiveCoreData));
-      Wire.endTransmission();
+      I2C_CONN.beginTransmission(TELEMETRY_CORE_I2C_ADDR);
+      I2C_CONN.write((uint8_t *)&tractiveCoreData, sizeof(tractiveCoreData));
+      I2C_CONN.endTransmission();
 
       // debugging
       if (debugger.debugEnabled)
@@ -1505,63 +1509,63 @@ String TaskStateToString(eTaskState state)
  */
 void PrintTWAIDebug()
 {
-  Serial.printf("\n--- START TWAI DEBUG ---\n\n");
+  SERIAL_DEBUG.printf("\n--- START TWAI DEBUG ---\n\n");
   // bus alerts
-  Serial.printf("TWAI BUS Alerts:\n");
+  SERIAL_DEBUG.printf("TWAI BUS Alerts:\n");
   uint32_t alerts;
   twai_read_alerts(&alerts, pdMS_TO_TICKS(100));
   if (alerts & TWAI_ALERT_TX_SUCCESS)
   {
-    Serial.printf("TWAI ALERT: TX Success\n");
+    SERIAL_DEBUG.printf("TWAI ALERT: TX Success\n");
   }
   if (alerts & TWAI_ALERT_TX_FAILED)
   {
-    Serial.printf("TWAI ALERT: TX Failed\n");
+    SERIAL_DEBUG.printf("TWAI ALERT: TX Failed\n");
   }
   if (alerts & TWAI_ALERT_RX_QUEUE_FULL)
   {
-    Serial.printf("TWAI ALERT: RX Queue Full\n");
+    SERIAL_DEBUG.printf("TWAI ALERT: RX Queue Full\n");
   }
   if (alerts & TWAI_ALERT_ABOVE_ERR_WARN)
   {
-    Serial.printf("TWAI ALERT: Surpassed Error Warning Limit\n");
+    SERIAL_DEBUG.printf("TWAI ALERT: Surpassed Error Warning Limit\n");
   }
   if (alerts & TWAI_ALERT_ERR_PASS)
   {
-    Serial.printf("TWAI ALERT: Entered Error Passive state\n");
+    SERIAL_DEBUG.printf("TWAI ALERT: Entered Error Passive state\n");
   }
   if (alerts & TWAI_ALERT_BUS_OFF)
   {
-    Serial.printf("TWAI ALERT: Bus Off\n");
+    SERIAL_DEBUG.printf("TWAI ALERT: Bus Off\n");
   }
 
-  Serial.printf("\n");
+  SERIAL_DEBUG.printf("\n");
 
   // --- incoming messages --- //
 
   // --- outgoing messages --- //
 
   // sent status
-  Serial.printf("Rine Ctrl Send Status: 0x%X\n", debugger.TWAI_rinehartCtrlResult);
-  Serial.printf("Precharge Ctrl Send Status: 0x%X\n", debugger.TWAI_prechargeCtrlResult);
+  SERIAL_DEBUG.printf("Rine Ctrl Send Status: 0x%X\n", debugger.TWAI_rinehartCtrlResult);
+  SERIAL_DEBUG.printf("Precharge Ctrl Send Status: 0x%X\n", debugger.TWAI_prechargeCtrlResult);
 
   // messages
-  Serial.printf("\n");
-  Serial.printf("Rinehart Ctrl Outgoing Message:\n");
+  SERIAL_DEBUG.printf("\n");
+  SERIAL_DEBUG.printf("Rinehart Ctrl Outgoing Message:\n");
   for (int i = 0; i < 8; ++i)
   {
-    Serial.printf("Byte %d: %02X\t", i, debugger.TWAI_rinehartCtrlMessage[i]);
+    SERIAL_DEBUG.printf("Byte %d: %02X\t", i, debugger.TWAI_rinehartCtrlMessage[i]);
   }
 
-  Serial.printf("\n");
+  SERIAL_DEBUG.printf("\n");
 
-  Serial.printf("Precharge Ctrl Outgoing Message:\n");
+  SERIAL_DEBUG.printf("Precharge Ctrl Outgoing Message:\n");
   for (int i = 0; i < 8; ++i)
   {
-    Serial.printf("Byte %d: %02X\t", i, debugger.TWAI_prechargeCtrlMessage[i]);
+    SERIAL_DEBUG.printf("Byte %d: %02X\t", i, debugger.TWAI_prechargeCtrlMessage[i]);
   }
 
-  Serial.printf("\n\n--- END TWAI DEBUG ---\n");
+  SERIAL_DEBUG.printf("\n\n--- END TWAI DEBUG ---\n");
 }
 
 /**
@@ -1569,41 +1573,41 @@ void PrintTWAIDebug()
  */
 void PrintIODebug()
 {
-  Serial.printf("\n--- START I/O DEBUG ---\n");
+  SERIAL_DEBUG.printf("\n--- START I/O DEBUG ---\n");
 
   // // INPUTS
   // // pedal 0 & 1
-  Serial.printf("Pedal 0: %d\tPedal 1: %d\n", debugger.IO_data.inputs.pedal0, debugger.IO_data.inputs.pedal1);
+  SERIAL_DEBUG.printf("Pedal 0: %d\tPedal 1: %d\n", debugger.IO_data.inputs.pedal0, debugger.IO_data.inputs.pedal1);
 
   // // brake 0 & 1
-  Serial.printf("Brake Front: %d\tBrake Rear: %d\n", debugger.IO_data.inputs.frontBrake, debugger.IO_data.inputs.rearBrake);
+  SERIAL_DEBUG.printf("Brake Front: %d\tBrake Rear: %d\n", debugger.IO_data.inputs.frontBrake, debugger.IO_data.inputs.rearBrake);
 
   // // brake regen
-  Serial.printf("Brake Regen: %d\n", debugger.IO_data.tractive.brakeRegen);
+  SERIAL_DEBUG.printf("Brake Regen: %d\n", debugger.IO_data.tractive.brakeRegen);
 
   // // coast regen
-  Serial.printf("Coast Regen: %d\n", debugger.IO_data.tractive.coastRegen);
+  SERIAL_DEBUG.printf("Coast Regen: %d\n", debugger.IO_data.tractive.coastRegen);
 
   // // faults
-  Serial.printf("Faults: IMD: %d | BMS: %d\n", tractiveCoreData.sensors.imdFault, tractiveCoreData.sensors.bmsFault);
+  SERIAL_DEBUG.printf("Faults: IMD: %d | BMS: %d\n", tractiveCoreData.sensors.imdFault, tractiveCoreData.sensors.bmsFault);
 
   // // rtd
-  Serial.printf("Ready to Drive: %s\n", tractiveCoreData.tractive.readyToDrive ? "READY" : "DEACTIVATED");
+  SERIAL_DEBUG.printf("Ready to Drive: %s\n", tractiveCoreData.tractive.readyToDrive ? "READY" : "DEACTIVATED");
 
   // // inverter
-  Serial.printf("Inverter Enable: %s\n", tractiveCoreData.tractive.enableInverter ? "ENABLED" : "DISABLED");
+  SERIAL_DEBUG.printf("Inverter Enable: %s\n", tractiveCoreData.tractive.enableInverter ? "ENABLED" : "DISABLED");
 
   // // OUTPUTS
-  Serial.printf("Buzzer Status: %s\n", debugger.IO_data.outputs.buzzerEnable ? "On" : "Off");
+  SERIAL_DEBUG.printf("Buzzer Status: %s\n", debugger.IO_data.outputs.buzzerEnable ? "On" : "Off");
 
-  Serial.printf("Commanded Torque: %d\n", tractiveCoreData.tractive.commandedTorque);
+  SERIAL_DEBUG.printf("Commanded Torque: %d\n", tractiveCoreData.tractive.commandedTorque);
 
-  Serial.printf("Drive Mode: %d\n", (int)tractiveCoreData.tractive.driveMode);
+  SERIAL_DEBUG.printf("Drive Mode: %d\n", (int)tractiveCoreData.tractive.driveMode);
 
-  Serial.printf("Brake Light: %d\n", (int)tractiveCoreData.outputs.brakeLightEnable);
-  Serial.printf("Fan Enable: %d\n", (int)tractiveCoreData.outputs.fansEnable);
+  SERIAL_DEBUG.printf("Brake Light: %d\n", (int)tractiveCoreData.outputs.brakeLightEnable);
+  SERIAL_DEBUG.printf("Fan Enable: %d\n", (int)tractiveCoreData.outputs.fansEnable);
 
-  Serial.printf("\n--- END I/O DEBUG ---\n");
+  SERIAL_DEBUG.printf("\n--- END I/O DEBUG ---\n");
 }
 
 /**
@@ -1657,11 +1661,11 @@ void PrintScheduler()
   }
 
   // print
-  // Serial.printf("read io:[%s](%d)<%d Hz> | write io:[%s](%d)<%d Hz> | read twai:[%s](%d)<%d Hz> | write twai:[%s](%d)<%d Hz> | precharge:[%s](%d)<%d Hz> \r",
+  // SERIAL_DEBUG.printf("read io:[%s](%d)<%d Hz> | write io:[%s](%d)<%d Hz> | read twai:[%s](%d)<%d Hz> | write twai:[%s](%d)<%d Hz> | precharge:[%s](%d)<%d Hz> \r",
   //   taskStatesStrings.at(0), debugger.ioReadTaskCount, taskRefreshRate.at(0), taskStatesStrings.at(1), debugger.ioWriteTaskCount, taskRefreshRate.at(1), taskStatesStrings.at(2),
   //   debugger.twaiReadTaskCount, taskRefreshRate.at(2), taskStatesStrings.at(3), debugger.twaiWriteTaskCount, taskRefreshRate.at(3), taskStatesStrings.at(4), debugger.prechargeTaskCount, taskRefreshRate.at(4));
 
-  Serial.printf("uptime: %d | read io:<%d Hz> (%d) | write io:<%d Hz> (%d) | read twai:<%d Hz> (%d) | write twai:<%d Hz> (%d) | precharge:<%d Hz> (%d) | telemetry update:<%d Hz> (%d) \r",
+  SERIAL_DEBUG.printf("uptime: %d | read io:<%d Hz> (%d) | write io:<%d Hz> (%d) | read twai:<%d Hz> (%d) | write twai:<%d Hz> (%d) | precharge:<%d Hz> (%d) | telemetry update:<%d Hz> (%d) \r",
                 uptime, taskRefreshRate.at(0), debugger.ioReadTaskCount, taskRefreshRate.at(1), debugger.ioWriteTaskCount,
                 taskRefreshRate.at(2), debugger.twaiReadTaskCount, taskRefreshRate.at(3), debugger.twaiWriteTaskCount, taskRefreshRate.at(4), debugger.prechargeTaskCount,
                 taskRefreshRate.at(5), debugger.telemetryUpdateTaskCount);
