@@ -23,11 +23,11 @@
 #include "rtc.h"
 #include "rtc_clk_common.h"
 #include <vector>
-
 #include "LoRa.h"
-
 #include <data_types.h>
 #include <pin_config.h>
+
+
 
 /*
 ===============================================================================================
@@ -61,6 +61,11 @@
                                   Global Variables
 ===============================================================================================
 */
+
+// TWAI
+static const twai_general_config_t can_general_config = TWAI_GENERAL_CONFIG_DEFAULT((gpio_num_t)TWAI_TX_PIN, (gpio_num_t)TWAI_RX_PIN, TWAI_MODE_NORMAL);
+static const twai_timing_config_t can_timing_config = TWAI_TIMING_CONFIG_500KBITS();
+static const twai_filter_config_t can_filter_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
 
 /**
  * @brief debugger structure used for organizing debug information
@@ -303,6 +308,32 @@ void setup()
   SERIAL_DEBUG.printf("\n\n|--- STARTING SETUP ---|\n\n");
 
   // -------------------------------------------------------------------------- //
+
+  // --------------------- initialize TWAI Controller -------------------------- //
+  // install TWAI driver
+  if (twai_driver_install(&can_general_config, &can_timing_config, &can_filter_config) == ESP_OK)
+  {
+    SERIAL_DEBUG.printf("TWAI DRIVER INSTALL [ SUCCESS ]\n");
+
+    // start CAN bus
+    if (twai_start() == ESP_OK)
+    {
+      SERIAL_DEBUG.printf("TWAI INIT [ SUCCESS ]\n");
+      twai_reconfigure_alerts(TWAI_ALERT_ALL, NULL);
+    }
+
+    else
+    {
+      SERIAL_DEBUG.printf("TWAI INIT [ FAILED ]\n");
+    }
+  }
+
+  else
+  {
+    SERIAL_DEBUG.printf("TWAI DRIVER INSTALL [ FAILED ]\n");
+  }
+  // --------------------------------------------------------------------------- //
+
 
   // ----------------------- initialize i2c connection ----------------------- //
 
@@ -573,6 +604,34 @@ void DataWriteTask(void *pvParameters)
 
       // HUD update
       HUD.write((uint8_t *)&telemetryCoreData, sizeof(telemetryCoreData));
+
+      //TWAI
+      //Dash message
+      twai_message_t dash;
+      dash.identifier = 0xA777;
+      dash.extd = 1;
+      dash.data_length_code = 3;
+
+      //assigning dashboard data
+      uint64_t hexSpeed, hexTemp, hexMode;
+
+      //copying data to make raw hexa data
+      memcpy(&hexSpeed, &telemetryCoreData.tractiveCoreData.tractive.currentSpeed, sizeof(float));
+      memcpy(&hexTemp, &telemetryCoreData.tractiveCoreData.sensors.coolingTempOut, sizeof(float));
+      memcpy(&hexMode, &telemetryCoreData.tractiveCoreData.tractive.driveMode, sizeof(int));
+
+      dash.data[0] = hexSpeed;
+      dash.data[1] = hexTemp;
+      dash.data[2] = hexMode;
+
+
+      //Queue message for transmission
+      if (twai_transmit(&dash, pdMS_TO_TICKS(1000)) == ESP_OK) {
+        SERIAL_DEBUG.printf("Message queued for transmission\n");
+      } else {
+        SERIAL_DEBUG.printf("Failed to queue message for transmission\n");
+      }
+
 
       // release mutex!
       xSemaphoreGive(xMutex);
