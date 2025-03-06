@@ -88,7 +88,7 @@
 #define TASK_STACK_SIZE 20000 // in bytes
 
 // port aliases
-#define SERIAL_DEBUG Serial
+#define SERIAL_DEBUG Serial //Serial1 = HUD
 #define I2C_CONN Wire
 
 // debug
