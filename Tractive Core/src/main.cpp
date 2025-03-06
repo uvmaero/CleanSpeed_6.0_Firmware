@@ -1079,7 +1079,7 @@ void TelemetryUpdateTask(void *pvParameters)
       // write to i2c bus
       I2C_CONN.beginTransmission(TELEMETRY_CORE_I2C_ADDR);
       I2C_CONN.write((uint8_t *)&tractiveCoreData, sizeof(tractiveCoreData));
-      I2C_CONN.endTransmission();
+        I2C_CONN.endTransmission();
 
       // debugging
       if (debugger.debugEnabled)
