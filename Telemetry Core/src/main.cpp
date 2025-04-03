@@ -256,6 +256,12 @@ SPIClass hspi(HSPI);
 
 // Raspberry Pi
 
+//unions
+union FloatToBytes {
+  float f;
+  uint8_t bytes[4];
+};
+
 /*
 ===============================================================================================
                                     Function Declarations
@@ -605,33 +611,59 @@ void DataWriteTask(void *pvParameters)
       // HUD update
       HUD.write((uint8_t *)&telemetryCoreData, sizeof(telemetryCoreData));
 
-      //TWAI
-      //Dash message
-      twai_message_t dash;
-      dash.identifier = 0xA777;
-      dash.extd = 1;
-      dash.data_length_code = 3;
+      //----------------------------/ TWAI Messages /-----------------------------------//
 
-      //assigning dashboard data
-      uint64_t hexSpeed, hexTemp, hexMode;
+      //speed_and_temp message
+      twai_message_t speed_and_temp;
+      speed_and_temp.identifier = 0xA1;
+      speed_and_temp.extd = 1;
+      speed_and_temp.data_length_code = 8;
 
-      //copying data to make raw hexa data
-      memcpy(&hexSpeed, &telemetryCoreData.tractiveCoreData.tractive.currentSpeed, sizeof(float));
-      memcpy(&hexTemp, &telemetryCoreData.tractiveCoreData.sensors.coolingTempOut, sizeof(float));
-      memcpy(&hexMode, &telemetryCoreData.tractiveCoreData.tractive.driveMode, sizeof(int));
+      //assigning speed and temp data
+      uint8_t hexSpeed, hexTemp;
 
-      dash.data[0] = hexSpeed;
-      dash.data[1] = hexTemp;
-      dash.data[2] = hexMode;
+      //making the data into unsigned chars
+      FloatToBytes byteSpeed;
+      FloatToBytes byteTemp;
+
+      byteSpeed.f = telemetryCoreData.tractiveCoreData.tractive.currentSpeed;
+      byteTemp.f = telemetryCoreData.tractiveCoreData.sensors.coolingTempOut;
+
+      //assigning data
+      speed_and_temp.data[0] = byteSpeed.bytes[0];
+      speed_and_temp.data[1] = byteSpeed.bytes[1];
+      speed_and_temp.data[2] = byteSpeed.bytes[2];
+      speed_and_temp.data[3] = byteSpeed.bytes[3];
+      speed_and_temp.data[4] = byteTemp.bytes[0];
+      speed_and_temp.data[5] = byteTemp.bytes[1];
+      speed_and_temp.data[6] = byteTemp.bytes[2];
+      speed_and_temp.data[7] = byteTemp.bytes[3];
 
 
       //Queue message for transmission
-      if (twai_transmit(&dash, pdMS_TO_TICKS(1000)) == ESP_OK) {
+      if (twai_transmit(&speed_and_temp, pdMS_TO_TICKS(1000)) == ESP_OK) {
         SERIAL_DEBUG.printf("Message queued for transmission\n");
       } else {
         SERIAL_DEBUG.printf("Failed to queue message for transmission\n");
       }
 
+      //mode message
+      twai_message_t mode;
+      speed_and_temp.identifier = 0xA2;
+      speed_and_temp.extd = 1;
+      speed_and_temp.data_length_code = 1;
+
+      //assigning data
+      mode.data[0] = (uint8_t) telemetryCoreData.tractiveCoreData.tractive.driveMode;
+
+      //Queue message for transmission
+      if (twai_transmit(&speed_and_temp, pdMS_TO_TICKS(1000)) == ESP_OK) {
+        SERIAL_DEBUG.printf("Message queued for transmission\n");
+      } else {
+        SERIAL_DEBUG.printf("Failed to queue message for transmission\n");
+      }
+
+      //--------------------------------------------------------------------------------//
 
       // release mutex!
       xSemaphoreGive(xMutex);
