@@ -1,3 +1,0 @@
-/home/tobedetered/coding/aero/CleanSpeed_6.0_Firmware/cmake-build-debug/CMakeFiles/CleanSpeed_6_0_Firmware.dir
-/home/tobedetered/coding/aero/CleanSpeed_6.0_Firmware/cmake-build-debug/CMakeFiles/edit_cache.dir
-/home/tobedetered/coding/aero/CleanSpeed_6.0_Firmware/cmake-build-debug/CMakeFiles/rebuild_cache.dir
