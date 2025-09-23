@@ -23,7 +23,9 @@
 #include "rtc.h"
 #include "rtc_clk_common.h"
 #include <vector>
+
 #include "LoRa.h"
+
 #include <data_types.h>
 #include <pin_config.h>
 
@@ -61,11 +63,6 @@
                                   Global Variables
 ===============================================================================================
 */
-
-// TWAI
-static const twai_general_config_t can_general_config = TWAI_GENERAL_CONFIG_DEFAULT((gpio_num_t)TWAI_TX_PIN, (gpio_num_t)TWAI_RX_PIN, TWAI_MODE_NORMAL);
-static const twai_timing_config_t can_timing_config = TWAI_TIMING_CONFIG_500KBITS();
-static const twai_filter_config_t can_filter_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
 
 /**
  * @brief debugger structure used for organizing debug information
@@ -256,12 +253,6 @@ SPIClass hspi(HSPI);
 
 // Raspberry Pi
 
-//unions
-union FloatToBytes {
-  float f;
-  uint8_t bytes[4];
-};
-
 /*
 ===============================================================================================
                                     Function Declarations
@@ -314,32 +305,6 @@ void setup()
   SERIAL_DEBUG.printf("\n\n|--- STARTING SETUP ---|\n\n");
 
   // -------------------------------------------------------------------------- //
-
-  // --------------------- initialize TWAI Controller -------------------------- //
-  // install TWAI driver
-  if (twai_driver_install(&can_general_config, &can_timing_config, &can_filter_config) == ESP_OK)
-  {
-    SERIAL_DEBUG.printf("TWAI DRIVER INSTALL [ SUCCESS ]\n");
-
-    // start CAN bus
-    if (twai_start() == ESP_OK)
-    {
-      SERIAL_DEBUG.printf("TWAI INIT [ SUCCESS ]\n");
-      twai_reconfigure_alerts(TWAI_ALERT_ALL, NULL);
-    }
-
-    else
-    {
-      SERIAL_DEBUG.printf("TWAI INIT [ FAILED ]\n");
-    }
-  }
-
-  else
-  {
-    SERIAL_DEBUG.printf("TWAI DRIVER INSTALL [ FAILED ]\n");
-  }
-  // --------------------------------------------------------------------------- //
-
 
   // ----------------------- initialize i2c connection ----------------------- //
 
@@ -482,22 +447,22 @@ void setup()
   // task status
   SERIAL_DEBUG.printf("\nTask Status:\n");
   if (xHandleIORead != NULL)
-    SERIAL_DEBUG.printf("I/O READ TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandleIORead)));
+    SERIAL_DEBUG.printf("I/O READ TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandleIORead)).c_str());
   else
     SERIAL_DEBUG.printf("I/O READ TASK STATUS: DISABLED!\n");
 
   if (xHandleTractiveRead != NULL)
-    SERIAL_DEBUG.printf("TRACTIVE READ TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandleTractiveRead)));
+    SERIAL_DEBUG.printf("TRACTIVE READ TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandleTractiveRead)).c_str());
   else
     SERIAL_DEBUG.printf("TRACTIVE READ TASK STATUS: DISABLED!\n");
 
   if (xHandleDataRead != NULL)
-    SERIAL_DEBUG.printf("DATA READ TASK STATUS %s\n", TaskStateToString(eTaskGetState(xHandleDataRead)));
+    SERIAL_DEBUG.printf("DATA READ TASK STATUS %s\n", TaskStateToString(eTaskGetState(xHandleDataRead)).c_str());
   else
     SERIAL_DEBUG.printf("DATA READ TASK STAUS: DISABLED!\n");
 
   if (xHandleDataWrite != NULL)
-    SERIAL_DEBUG.printf("DATA WRITE TASK STATUS %s\n", TaskStateToString(eTaskGetState(xHandleDataWrite)));
+    SERIAL_DEBUG.printf("DATA WRITE TASK STATUS %s\n", TaskStateToString(eTaskGetState(xHandleDataWrite)).c_str());
   else
     SERIAL_DEBUG.printf("DATA WRTIE TASK STAUS: DISABLED!\n");
 
@@ -610,60 +575,6 @@ void DataWriteTask(void *pvParameters)
 
       // HUD update
       HUD.write((uint8_t *)&telemetryCoreData, sizeof(telemetryCoreData));
-
-      //----------------------------/ TWAI Messages /-----------------------------------//
-
-      //speed_and_temp message
-      twai_message_t speed_and_temp;
-      speed_and_temp.identifier = 0xA1;
-      speed_and_temp.extd = 1;
-      speed_and_temp.data_length_code = 8;
-
-      //assigning speed and temp data
-      uint8_t hexSpeed, hexTemp;
-
-      //making the data into unsigned chars
-      FloatToBytes byteSpeed;
-      FloatToBytes byteTemp;
-
-      byteSpeed.f = telemetryCoreData.tractiveCoreData.tractive.currentSpeed;
-      byteTemp.f = telemetryCoreData.tractiveCoreData.sensors.coolingTempOut;
-
-      //assigning data
-      speed_and_temp.data[0] = byteSpeed.bytes[0];
-      speed_and_temp.data[1] = byteSpeed.bytes[1];
-      speed_and_temp.data[2] = byteSpeed.bytes[2];
-      speed_and_temp.data[3] = byteSpeed.bytes[3];
-      speed_and_temp.data[4] = byteTemp.bytes[0];
-      speed_and_temp.data[5] = byteTemp.bytes[1];
-      speed_and_temp.data[6] = byteTemp.bytes[2];
-      speed_and_temp.data[7] = byteTemp.bytes[3];
-
-
-      //Queue message for transmission
-      if (twai_transmit(&speed_and_temp, pdMS_TO_TICKS(1000)) == ESP_OK) {
-        SERIAL_DEBUG.printf("Message queued for transmission\n");
-      } else {
-        SERIAL_DEBUG.printf("Failed to queue message for transmission\n");
-      }
-
-      //mode message
-      twai_message_t mode;
-      speed_and_temp.identifier = 0xA2;
-      speed_and_temp.extd = 1;
-      speed_and_temp.data_length_code = 1;
-
-      //assigning data
-      mode.data[0] = (uint8_t) telemetryCoreData.tractiveCoreData.tractive.driveMode;
-
-      //Queue message for transmission
-      if (twai_transmit(&speed_and_temp, pdMS_TO_TICKS(1000)) == ESP_OK) {
-        SERIAL_DEBUG.printf("Message queued for transmission\n");
-      } else {
-        SERIAL_DEBUG.printf("Failed to queue message for transmission\n");
-      }
-
-      //--------------------------------------------------------------------------------//
 
       // release mutex!
       xSemaphoreGive(xMutex);
