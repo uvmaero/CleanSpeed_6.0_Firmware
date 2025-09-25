@@ -298,8 +298,6 @@ void FrontWheelSpeedCalculator();
 void RearRightWheelSpeedCalculator();
 void RearLeftWheelSpeedCalculator();
 
-short DriveModeToNumber();
-short PrechargeStateToNumber();
 String TaskStateToString(eTaskState state);
 
 /*
@@ -1341,8 +1339,6 @@ void RearRightWheelSpeedCalculator() {
 
     // update time keeping
     tractiveCoreData.sensors.brWheelSpeedTime = esp_timer_get_time();
-
-    return;
 }
 
 /**
@@ -1358,53 +1354,6 @@ void RearLeftWheelSpeedCalculator() {
 
     // update time keeping
     tractiveCoreData.sensors.blWheelSpeedTime = esp_timer_get_time();
-
-    return;
-}
-
-/**
- *
- */
-short DriveModeToNumber() {
-    // inits
-    short number;
-
-    // convert
-    if (tractiveCoreData.tractive.driveMode == SLOW) {
-        number = 1;
-    }
-    if (tractiveCoreData.tractive.driveMode == ECO) {
-        number = 2;
-    }
-    if (tractiveCoreData.tractive.driveMode == FAST) {
-        number = 3;
-    }
-
-    return number;
-}
-
-/**
- *
- */
-short PrechargeStateToNumber() {
-    // inits
-    short number;
-
-    // convert
-    if (tractiveCoreData.tractive.prechargeState == PRECHARGE_OFF) {
-        number = 1;
-    }
-    if (tractiveCoreData.tractive.prechargeState == PRECHARGE_ON) {
-        number = 2;
-    }
-    if (tractiveCoreData.tractive.prechargeState == PRECHARGE_DONE) {
-        number = 3;
-    }
-    if (tractiveCoreData.tractive.prechargeState == PRECHARGE_ERROR) {
-        number = 4;
-    }
-
-    return number;
 }
 
 /**
