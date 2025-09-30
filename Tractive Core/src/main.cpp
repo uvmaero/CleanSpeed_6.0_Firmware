@@ -769,8 +769,8 @@ void TWAIReadTask(void* pvParameters) {
                         // combine the first two bytes and assign that to the
                         // rinehart voltage
                         tractiveCoreData.tractive.rinehartVoltage =
-                            (tmp2 << 8) | tmp1;  // little endian combination: value = (byte2
-                        // << 8) | byte1;
+                            (tmp2 << 8) |
+                            tmp1;  // little endian combination: value = (bytes << 8) | byte1;
                         break;
 
                     // BMS: general pack data
@@ -1322,8 +1322,6 @@ void FrontWheelSpeedCalculator() {
 
     // update time keeping
     tractiveCoreData.sensors.frontWheelSpeedTime = esp_timer_get_time();
-
-    return;
 }
 
 /**
@@ -1456,34 +1454,34 @@ void PrintTWAIDebug() {
 void PrintIODebug() {
     SERIAL_DEBUG.printf("\n--- START I/O DEBUG ---\n");
 
-    // // INPUTS
-    // // pedal 0 & 1
+    // INPUTS
+    // pedal 0 & 1
     SERIAL_DEBUG.printf("Pedal 0: %d\tPedal 1: %d\n", debugger.IO_data.inputs.pedal0,
                         debugger.IO_data.inputs.pedal1);
 
-    // // brake 0 & 1
+    // brake 0 & 1
     SERIAL_DEBUG.printf("Brake Front: %d\tBrake Rear: %d\n", debugger.IO_data.inputs.frontBrake,
                         debugger.IO_data.inputs.rearBrake);
 
-    // // brake regen
+    // brake regen
     SERIAL_DEBUG.printf("Brake Regen: %d\n", debugger.IO_data.tractive.brakeRegen);
 
-    // // coast regen
+    // coast regen
     SERIAL_DEBUG.printf("Coast Regen: %d\n", debugger.IO_data.tractive.coastRegen);
 
-    // // faults
+    // faults
     SERIAL_DEBUG.printf("Faults: IMD: %d | BMS: %d\n", tractiveCoreData.sensors.imdFault,
                         tractiveCoreData.sensors.bmsFault);
 
-    // // rtd
+    // rtd
     SERIAL_DEBUG.printf("Ready to Drive: %s\n",
                         tractiveCoreData.tractive.readyToDrive ? "READY" : "DEACTIVATED");
 
-    // // inverter
+    // inverter
     SERIAL_DEBUG.printf("Inverter Enable: %s\n",
                         tractiveCoreData.tractive.enableInverter ? "ENABLED" : "DISABLED");
 
-    // // OUTPUTS
+    // OUTPUTS
     SERIAL_DEBUG.printf("Buzzer Status: %s\n",
                         debugger.IO_data.outputs.buzzerEnable ? "On" : "Off");
 
