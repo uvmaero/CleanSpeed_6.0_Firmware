@@ -16,15 +16,15 @@
 ===============================================================================================
 */
 
+//system
 #include <Arduino.h>
 #include <Wire.h>
-#include "driver/twai.h"
-#include "rtc.h"
-#include "rtc_clk_common.h"
-#include "vector"
-
-#include <data_types.h>
-#include <pin_config.h>
+#include <driver/twai.h>
+#include <rtc.h>
+#include <vector>
+//local
+#include "data_types.h"
+#include "pin_config.h"
 
 /*
 ===============================================================================================
@@ -33,59 +33,59 @@
 */
 
 // definitions
-#define TRAC_CON_ENABLE_BIAS 0.1     // the activation threshold of traction control expressed as a percentage difference between front and rear wheel speeds
-#define TRAC_CON_CORNER_ENABLE 0.7   // percent difference between rear wheel speeds needed to enable cornering traction control
-#define TRAC_CON_MAX_MOD 0.75        // maximum power reduction percentage that traction control can apply
-#define TRAC_CON_MOD_STEP 0.01       // the step in which each iteration of traction control modified the throttle response
-#define TRAC_CON_STEP_INCREASE_MOD 3 // the decrease in traction control management as a mutliple of the increasing step
+float TRAC_CON_ENABLE_BIAS =  0.1;   // the activation threshold of traction control expressed as a percentage difference between front and rear wheel speeds
+float TRAC_CON_CORNER_ENABLE = 0.7;   // percent difference between rear wheel speeds needed to enable cornering traction control
+float TRAC_CON_MAX_MOD = 0.75;        // maximum power reduction percentage that traction control can apply
+float TRAC_CON_MOD_STEP = 0.01;      // the step in which each iteration of traction control modified the throttle response
+float TRAC_CON_STEP_INCREASE_MOD = 3; // the decrease in traction control management as a mutliple of the increasing step
 
-#define TIRE_DIAMETER 20.0         // diameter of the vehicle's tires in inches
-#define WHEEL_RPM_CALC_THRESHOLD 5 // the number of times the hall effect sensor is tripped before calculating vehicle speed
+float TIRE_DIAMETER = 20.0;         // diameter of the vehicle's tires in inches
+float WHEEL_RPM_CALC_THRESHOLD = 5; // the number of times the hall effect sensor is tripped before calculating vehicle speed
 
-#define BRAKE_LIGHT_THRESHOLD 50 // the threshold that must be crossed for the brake to be considered active
+float BRAKE_LIGHT_THRESHOLD = 50; // the threshold that must be crossed for the brake to be considered active
 
-#define PEDAL_MIN 0       // minimum value the pedals can read as
-#define PEDAL_MAX 255     // maximum value a pedal can read as
-#define PEDAL_DEADBAND 15 // ~5% of PEDAL_MAX
-#define PEDAL_DELTA 0.15  // difference between pedal value for cutoff threshold computed by percent difference
+float PEDAL_MIN = 0;       // minimum value the pedals can read as
+float PEDAL_MAX = 255;     // maximum value a pedal can read as
+float PEDAL_DEADBAND = 15; // ~5% of PEDAL_MAX
+float PEDAL_DELTA = 0.15;  // difference between pedal value for cutoff threshold computed by percent difference
 
-#define MAX_TORQUE 225        // MAX TORQUE RINEHART CAN ACCEPT, DO NOT EXCEED 230!!!
-#define MAX_REVERSE_TORQUE 25 // for limiting speed while in reverse
+const int MAX_TORQUE = 225;        // MAX TORQUE RINEHART CAN ACCEPT, DO NOT EXCEED 230!!!
+const float MAX_REVERSE_TORQUE = 25; // for limiting speed while in reverse
 
-#define MIN_BUS_VOLTAGE 150 // min bus voltage
+float MIN_BUS_VOLTAGE = 150; // min bus voltage
 
-#define COOLING_ENABLE_THRESHOLD 35  // in degrees C
-#define COOLING_DISABLE_THRESHOLD 30 // in degrees C
+float COOLING_ENABLE_THRESHOLD = 35;  // in degrees C
+float COOLING_DISABLE_THRESHOLD = 30; // in degrees C
 
-#define PRECHARGE_FLOOR 0.8  // precentage of bus voltage rinehart should be at
-#define BUZZER_DURATION 2000 // in milliseconds
+float PRECHARGE_FLOOR = 0.8;  // precentage of bus voltage rinehart should be at
+float BUZZER_DURATION = 2000; // in milliseconds
 
-#define TELEMETRY_CORE_I2C_ADDR 0x10 // address in hex
-#define SERIAL_BAUD_RATE 9600        // baud rate
-#define I2C_FREQUENCY 100000         // frequency of bus
+uint16_t TELEMETRY_CORE_I2C_ADDR = 0x10; // address in hex
+float SERIAL_BAUD_RATE = 9600;        // baud rate
+float I2C_FREQUENCY = 100000;         // frequency of bus
 
 // TWAI
-#define RINE_MOTOR_INFO_ADDR 0x0A5    // get motor information from Rinehart
-#define RINE_VOLT_INFO_ADDR 0x0A7     // get rinehart electrical information
-#define RINE_BUS_INFO_ADDR 0x0AA      // get rinehart relay information
-#define RINE_MOTOR_CONTROL_ADDR 0x0C0 // motor command address
-#define RINE_BUS_CONTROL_ADDR 0x0C1   // control rinehart relay states
+const int RINE_MOTOR_INFO_ADDR = 0x0A5;    // get motor information from Rinehart
+const int RINE_VOLT_INFO_ADDR = 0x0A7;     // get rinehart electrical information
+const int RINE_BUS_INFO_ADDR = 0x0AA;      // get rinehart relay information
+const int RINE_MOTOR_CONTROL_ADDR = 0x0C0; // motor command address
+const int RINE_BUS_CONTROL_ADDR = 0x0C1;   // control rinehart relay states
 
-#define BMS_GEN_DATA_ADDR 0x6B0  // important BMS data
-#define BMS_CELL_DATA_ADDR 0x6B2 // cell data
+const int BMS_GEN_DATA_ADDR = 0x6B0;  // important BMS data
+const int BMS_CELL_DATA_ADDR = 0x6B2; // cell data
 
 // tasks
-#define IO_WRITE_REFRESH_RATE 9         // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define IO_READ_REFRESH_RATE 2          // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define TWAI_WRITE_REFRESH_RATE 8       // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define TWAI_READ_REFRESH_RATE 8        // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define PRECHARGE_REFRESH_RATE 225      // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define TELEMETRY_UPDATE_REFRESH_RATE 9 // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define DEBUG_REFRESH_RATE 1000         // measured in ticks (RTOS ticks interrupt at 1 kHz)
+const TickType_t IO_WRITE_REFRESH_RATE = 9;         // measured in ticks (RTOS ticks interrupt at 1 kHz)
+const TickType_t IO_READ_REFRESH_RATE = 2;          // measured in ticks (RTOS ticks interrupt at 1 kHz)
+const TickType_t TWAI_WRITE_REFRESH_RATE = 8;       // measured in ticks (RTOS ticks interrupt at 1 kHz)
+const TickType_t TWAI_READ_REFRESH_RATE = 8;        // measured in ticks (RTOS ticks interrupt at 1 kHz)
+const TickType_t PRECHARGE_REFRESH_RATE = 225;      // measured in ticks (RTOS ticks interrupt at 1 kHz)
+const TickType_t TELEMETRY_UPDATE_REFRESH_RATE = 9; // measured in ticks (RTOS ticks interrupt at 1 kHz)
+const TickType_t DEBUG_REFRESH_RATE = 1000;         // measured in ticks (RTOS ticks interrupt at 1 kHz)
 
-#define TWAI_BLOCK_DELAY 1 // time to block to complete function call in FreeRTOS ticks
+float TWAI_BLOCK_DELAY = 1; // time to block to complete function call in FreeRTOS ticks
 
-#define TASK_STACK_SIZE 20000 // in bytes
+float TASK_STACK_SIZE = 20000; // in bytes
 
 // port aliases
 #define SERIAL_DEBUG Serial
@@ -253,6 +253,8 @@ TaskHandle_t xHandleDebug = NULL;
 static const twai_general_config_t can_general_config = TWAI_GENERAL_CONFIG_DEFAULT((gpio_num_t)TWAI_TX_PIN, (gpio_num_t)TWAI_RX_PIN, TWAI_MODE_NORMAL);
 static const twai_timing_config_t can_timing_config = TWAI_TIMING_CONFIG_500KBITS();
 static const twai_filter_config_t can_filter_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
+
+int littletest = 2;
 
 /*
 ===============================================================================================
@@ -458,32 +460,32 @@ void setup()
   // task status
   SERIAL_DEBUG.printf("\nTask Status:\n");
   if (xHandleIORead != NULL)
-    SERIAL_DEBUG.printf("I/O READ TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandleIORead)));
+    SERIAL_DEBUG.printf("I/O READ TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandleIORead)).c_str());
   else
     SERIAL_DEBUG.printf("I/O READ TASK STATUS: DISABLED!\n");
 
   if (xHandleIOWrite != NULL)
-    SERIAL_DEBUG.printf("I/O WRITE TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandleIOWrite)));
+    SERIAL_DEBUG.printf("I/O WRITE TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandleIOWrite)).c_str());
   else
     SERIAL_DEBUG.printf("I/O WRITE TASK STATUS: DISABLED!\n");
 
   if (xHandleTWAIRead != NULL)
-    SERIAL_DEBUG.printf("TWAI READ TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandleTWAIRead)));
+    SERIAL_DEBUG.printf("TWAI READ TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandleTWAIRead)).c_str());
   else
     SERIAL_DEBUG.printf("TWAI READ TASK STATUS: DISABLED!\n");
 
   if (xHandleTWAIWrite != NULL)
-    SERIAL_DEBUG.printf("TWAI WRITE TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandleTWAIWrite)));
+    SERIAL_DEBUG.printf("TWAI WRITE TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandleTWAIWrite)).c_str());
   else
     SERIAL_DEBUG.printf("TWAI WRITE TASK STATUS: DISABLED!\n");
 
   if (xHandlePrecharge != NULL)
-    SERIAL_DEBUG.printf("PRECHARGE TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandlePrecharge)));
+    SERIAL_DEBUG.printf("PRECHARGE TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandlePrecharge)).c_str());
   else
     SERIAL_DEBUG.printf("PRECHARGE TASK STATUS: DISABLED!\n");
 
   if (xHandleTelemetryUpdate != NULL)
-    SERIAL_DEBUG.printf("TELEMETRY UPDATE TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandleTelemetryUpdate)));
+    SERIAL_DEBUG.printf("TELEMETRY UPDATE TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandleTelemetryUpdate)).c_str());
   else
     SERIAL_DEBUG.printf("TELEMETRY UPDATE TASK STAUS: DISABLED!\n");
 

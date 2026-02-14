@@ -27,34 +27,35 @@
 #include <data_types.h>
 #include <pin_config.h>
 
-
-
 /*
 ===============================================================================================
                                     Definitions
 ===============================================================================================
 */
 
-// tasks
-#define IO_READ_REFRESH_RATE 9       // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define SERIAL_WRITE_REFRESH_RATE 9  // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define SERIAL_READ_REFRESH_RATE 9   // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define DEBUG_REFRESH_RATE 1000      // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define TRACTIVE_READ_REFRESH_RATE 9 // measured in ticks (RTOS ticks interrupt at 1 kHz)
-
-#define TASK_STACK_SIZE 20000 // in bytes
+// task
+int IO_READ_REFRESH_RATE = 9;       // measured in ticks (RTOS ticks interrupt at 1 kHz)
+int SERIAL_WRITE_REFRESH_RATE = 9;  // measured in ticks (RTOS ticks interrupt at 1 kHz)
+int SERIAL_READ_REFRESH_RATE = 9;  // measured in ticks (RTOS ticks interrupt at 1 kHz)
+int DEBUG_REFRESH_RATE = 1000;      // measured in ticks (RTOS ticks interrupt at 1 kHz)
+int TRACTIVE_READ_REFRESH_RATE = 9; // measured in ticks (RTOS ticks interrupt at 1 kHz)
+int TASK_STACK_SIZE = 20000; // in bytes
 
 // general
-#define SERIAL_BAUD_RATE 9600        // baud rate
-#define TELEMETRY_CORE_I2C_ADDR 0x10 // address for i2c in hex
-#define I2C_FREQUENCY 100000 // frequency of bus
+int SERIAL_BAUD_RATE = 9600;        // baud rate
+uint8_t TELEMETRY_CORE_I2C_ADDR = 0x10; // address for i2c in hex
+long I2C_FREQUENCY =  100000; // frequency of bus
+
+//pins
+gpio_num_t TWAI_TX_PIN = GPIO_NUM_0;
+gpio_num_t TWAI_RX_PIN = GPIO_NUM_0;
 
 // port aliases
 #define SERIAL_DEBUG Serial
 #define HUD Serial1
 
 // debug
-#define ENABLE_DEBUG true // master debug message control
+boolean ENABLE_DEBUG = true; // master debug message control
 
 /*
 ===============================================================================================
@@ -63,7 +64,7 @@
 */
 
 // TWAI
-static const twai_general_config_t can_general_config = TWAI_GENERAL_CONFIG_DEFAULT((gpio_num_t)TWAI_TX_PIN, (gpio_num_t)TWAI_RX_PIN, TWAI_MODE_NORMAL);
+static const twai_general_config_t can_general_config = TWAI_GENERAL_CONFIG_DEFAULT(TWAI_TX_PIN, TWAI_RX_PIN, TWAI_MODE_NORMAL);
 static const twai_timing_config_t can_timing_config = TWAI_TIMING_CONFIG_500KBITS();
 static const twai_filter_config_t can_filter_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
 
@@ -231,7 +232,8 @@ TelemetryCoreData telemetryCoreData = {
         .year = 0,
         .month = 0,
         .day = 0,
-    }};
+    }
+};
 
 // Mutex
 SemaphoreHandle_t xMutex = NULL;
@@ -476,17 +478,17 @@ void setup()
   // task status
   SERIAL_DEBUG.printf("\nTask Status:\n");
   if (xHandleIORead != NULL)
-    SERIAL_DEBUG.printf("I/O READ TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandleIORead)));
+    SERIAL_DEBUG.printf("I/O READ TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandleIORead)).c_str());
   else
     SERIAL_DEBUG.printf("I/O READ TASK STATUS: DISABLED!\n");
 
   if (xHandleTractiveRead != NULL)
-    SERIAL_DEBUG.printf("TRACTIVE READ TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandleTractiveRead)));
+    SERIAL_DEBUG.printf("TRACTIVE READ TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandleTractiveRead)).c_str());
   else
     SERIAL_DEBUG.printf("TRACTIVE READ TASK STATUS: DISABLED!\n");
 
   if (xHandleDataRead != NULL)
-    SERIAL_DEBUG.printf("DATA READ TASK STATUS %s\n", TaskStateToString(eTaskGetState(xHandleDataRead)));
+    SERIAL_DEBUG.printf("DATA READ TASK STATUS %s\n", TaskStateToString(eTaskGetState(xHandleDataRead)).c_str());
   else
     SERIAL_DEBUG.printf("DATA READ TASK STAUS: DISABLED!\n");
 

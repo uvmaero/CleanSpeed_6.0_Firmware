@@ -28,32 +28,32 @@
  * @brief the different throttle modes for to modify driving behavior
  * 
  */
-typedef enum DriveMode
+enum DriveMode
 {
     SLOW = 1,
     ECO = 2,
     FAST = 3,
-} DriveMode;
+};
 
 
 /**
  * @brief each state that the precharge state machine can be in
  * 
  */
-typedef enum PrechargeStates
+enum PrechargeStates
 {
     PRECHARGE_OFF = 0,
     PRECHARGE_ON = 1,
     PRECHARGE_DONE = 2,
     PRECHARGE_ERROR = 3,
-} PrechargeStates;
+};
 
 
 /**
  * @brief tractive state of the core
  * 
  */
-typedef struct TractiveCoreData
+struct TractiveCoreData
 {
     struct Tractive 
     {
@@ -134,7 +134,7 @@ typedef struct TractiveCoreData
         float maxCellTemp;
     } orion;
 
-} TractiveCoreData;
+};
 
 
 
@@ -142,7 +142,7 @@ typedef struct TractiveCoreData
  * @brief Debugger Structure
  * 
  */
-typedef struct Debugger
+struct Debugger
 {
     // debug toggle
     bool debugEnabled;
@@ -181,7 +181,7 @@ typedef struct Debugger
     int twaiWriteTaskPreviousCount;
     int prechargeTaskPreviousCount;
     int telemetryUpdateTaskPreviousCount;
-} Debugger;
+};
 
 
 // debug functions
