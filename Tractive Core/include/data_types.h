@@ -57,81 +57,81 @@ struct TractiveCoreData
 {
     struct Tractive 
     {
-        bool readyToDrive;
-        bool enableInverter;
+        bool readyToDrive = false;
+        bool enableInverter = false;
 
-        PrechargeStates prechargeState;
+        PrechargeStates prechargeState = PRECHARGE_OFF;
 
-        float rinehartVoltage;
+        float rinehartVoltage = 0.0f;
 
-        uint16_t commandedTorque;
+        uint16_t commandedTorque = 0;
 
-        bool driveDirection;             // true = forward | false = reverse
-        DriveMode driveMode;
+        bool driveDirection = false;             // true = forward | false = reverse
+        DriveMode driveMode = ECO;
 
-        float currentSpeed;
+        float currentSpeed = 0.0f;
 
-        bool tractionControlEnable;
-        float tractionControlModifier;
+        bool tractionControlEnable = true;
+        float tractionControlModifier = 1.00f;
 
-        uint16_t coastRegen;
-        uint16_t brakeRegen;
+        uint16_t coastRegen = 0;
+        uint16_t brakeRegen = 0;
     } tractive;
 
     struct Sensors
     {
-        bool imdFault;
-        bool bmsFault;
-        bool vicoreFault;
+        bool imdFault = true;
+        bool bmsFault = true;
+        bool vicoreFault = false;
 
-        float coolingTempIn;
-        float coolingTempOut;
+        float coolingTempIn = 0.0f;
+        float coolingTempOut = 0.0f;
 
-        float frontWheelsSpeed;
-        int16_t frontWheelSpeedCount;
-        int16_t frontWheelSpeedTime;
+        float frontWheelsSpeed = 0.0f;
+        int16_t frontWheelSpeedCount = 0;
+        int16_t frontWheelSpeedTime = 0;
 
-        float brWheelSpeed;
-        int16_t brWheelSpeedCount;
-        int16_t brWheelSpeedTime;
+        float brWheelSpeed = 0.0f;
+        int16_t brWheelSpeedCount = 0;
+        int16_t brWheelSpeedTime = 0;
 
-        float blWheelSpeed;
-        int16_t blWheelSpeedCount;
-        int16_t blWheelSpeedTime;
+        float blWheelSpeed = 0.0f;
+        int16_t blWheelSpeedCount = 0;
+        int16_t blWheelSpeedTime = 0;
     } sensors;
     
     struct Inputs
     {
-        uint16_t pedal0;
-        uint16_t pedal1;
+        uint16_t pedal0 = 0;
+        uint16_t pedal1 = 0;
 
-        uint16_t frontBrake;
-        uint16_t rearBrake;
+        uint16_t frontBrake = 0;
+        uint16_t rearBrake = 0;
     } inputs;
 
     struct Outputs
     {
-        bool vicoreEnable;
+        bool vicoreEnable = false;
 
-        bool brakeLightEnable;
+        bool brakeLightEnable = false;
 
-        bool fansEnable;
+        bool fansEnable = false;
 
-        bool buzzerEnable;
+        bool buzzerEnable = false;
     } outputs;
 
     struct Orion
     {        
-        float batteryChargeState;
+        float batteryChargeState = 0.0f;
 
-        float busVoltage;
+        float busVoltage = 0.0f;
 
-        float packCurrent;
+        float packCurrent = 0.0f;
 
-        float minCellVoltage;
-        float maxCellVoltage;
-        float minCellTemp;
-        float maxCellTemp;
+        float minCellVoltage = 0.0f;
+        float maxCellVoltage = 0.0f;
+        float minCellTemp = 0.0f;
+        float maxCellTemp = 0.0f;
     } orion;
 
 };
@@ -145,42 +145,43 @@ struct TractiveCoreData
 struct Debugger
 {
     // debug toggle
-    bool debugEnabled;
-    bool TWAI_debugEnabled;
-    bool IO_debugEnabled;
-    bool scheduler_debugEnable;
+    bool debugEnabled = false;
+    bool TWAI_debugEnabled = false;
+    bool IO_debugEnabled = false;
+    bool scheduler_debugEnable = true;
 
     // TWAI data
-    esp_err_t TWAI_rinehartCtrlResult;
-    esp_err_t TWAI_prechargeCtrlResult;
-    esp_err_t telemetryTractive1MessageResult;
-    esp_err_t telemetryTractive2MessageResult;
-    esp_err_t telemetrySensorMessageResult;
-    esp_err_t telemetryInputsMessageMessageResult;
-    esp_err_t telemetryOutputsMessageMessageResult;
-    uint8_t TWAI_rinehartCtrlMessage[8];
-    uint8_t TWAI_prechargeCtrlMessage[8];
+    esp_err_t TWAI_rinehartCtrlResult = ESP_OK;
+    esp_err_t TWAI_prechargeCtrlResult = ESP_OK;
+    esp_err_t telemetryTractive1MessageResult = ESP_OK;
+    esp_err_t telemetryTractive2MessageResult = ESP_OK;
+    esp_err_t telemetrySensorMessageResult = ESP_OK;
+    esp_err_t telemetryInputsMessageMessageResult = ESP_OK;
+    esp_err_t telemetryOutputsMessageMessageResult = ESP_OK;
+
+    uint8_t TWAI_rinehartCtrlMessage[8] = {};
+    uint8_t TWAI_prechargeCtrlMessage[8] = {};
 
     // I/O data
-    TractiveCoreData IO_data;
+    TractiveCoreData IO_data = {};
 
     // precharge data
-    PrechargeStates prechargeState;
+    PrechargeStates prechargeState = PRECHARGE_OFF;
 
     // scheduler data
-    int ioReadTaskCount;
-    int ioWriteTaskCount;
-    int twaiReadTaskCount;
-    int twaiWriteTaskCount;
-    int prechargeTaskCount;
-    int telemetryUpdateTaskCount;
+    int ioReadTaskCount = 0;
+    int ioWriteTaskCount = 0;
+    int twaiReadTaskCount = 0;
+    int twaiWriteTaskCount = 0;
+    int prechargeTaskCount = 0;
+    int telemetryUpdateTaskCount = 0;
 
-    int ioReadTaskPreviousCount;
-    int ioWriteTaskPreviousCount;
-    int twaiReadTaskPreviousCount;
-    int twaiWriteTaskPreviousCount;
-    int prechargeTaskPreviousCount;
-    int telemetryUpdateTaskPreviousCount;
+    int ioReadTaskPreviousCount = 0;
+    int ioWriteTaskPreviousCount = 0;
+    int twaiReadTaskPreviousCount = 0;
+    int twaiWriteTaskPreviousCount = 0;
+    int prechargeTaskPreviousCount = 0;
+    int telemetryUpdateTaskPreviousCount = 0;
 };
 
 
