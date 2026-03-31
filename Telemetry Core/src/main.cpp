@@ -493,7 +493,7 @@ void setup()
     SERIAL_DEBUG.printf("DATA READ TASK STAUS: DISABLED!\n");
 
   if (xHandleDataWrite != NULL)
-    SERIAL_DEBUG.printf("DATA WRITE TASK STATUS %s\n", TaskStateToString(eTaskGetState(xHandleDataWrite)));
+    SERIAL_DEBUG.printf("DATA WRITE TASK STATUS %s\n", TaskStateToString(eTaskGetState(xHandleDataWrite)).c_str());
   else
     SERIAL_DEBUG.printf("DATA WRTIE TASK STAUS: DISABLED!\n");
 

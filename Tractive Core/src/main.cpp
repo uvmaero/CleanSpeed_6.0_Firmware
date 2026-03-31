@@ -189,8 +189,8 @@ void setup()
   pinMode(VICORE_ENABLE_PIN, OUTPUT);
   pinMode(RTD_LED_PIN, OUTPUT);
   pinMode(DRIVE_MODE_LED_PIN, OUTPUT);
-  pinMode(BMS_FAULT_LED_PIN, OUTPUT);
-  pinMode(IMD_FAULT_LED_PIN, OUTPUT);
+  pinMode(BMS_FAULT_IND_PIN, OUTPUT);
+  pinMode(IMD_FAULT_IND_PIN, OUTPUT);
 
   pinMode(FAN_ENABLE_PIN, OUTPUT);
 
@@ -428,13 +428,13 @@ void IOReadTask(void *pvParameters)
       }
 
       // faults
-      if (digitalRead(BMS_FAULT_PIN) == HIGH)
+      if (digitalRead(BMS_FAULT_PIN) != LOW)
       {
-        tractiveCoreData.sensors.bmsFault = false;
+        tractiveCoreData.sensors.bmsFault = true;
       }
       else
       {
-        tractiveCoreData.sensors.bmsFault = true;
+        tractiveCoreData.sensors.bmsFault = false;
       }
 
       if (digitalRead(IMD_FAULT_PIN) == HIGH)
@@ -455,11 +455,13 @@ void IOReadTask(void *pvParameters)
         tractiveCoreData.sensors.vicoreFault = true;
       }
 
+
+
       // cooling
-      int tmpCoolingIn = analogReadMilliVolts(COOLING_IN_TEMP_PIN);
+      int tmpCoolingIn = analogReadMilliVolts(PUMP_TEMP_IN_PIN);
       tractiveCoreData.sensors.coolingTempIn = map(tmpCoolingIn, 0, 2500, 0, 100); // find thermistor values via testing
 
-      int tmpCoolingOut = analogReadMilliVolts(COOLING_OUT_TEMP_PIN);
+      int tmpCoolingOut = analogReadMilliVolts(PUMP_TEMP_OUT_PIN);
       tractiveCoreData.sensors.coolingTempOut = map(tmpCoolingOut, 0, 2500, 0, 100); // find thermistor values via testing
 
       if (tractiveCoreData.sensors.coolingTempIn >= COOLING_ENABLE_THRESHOLD)
@@ -534,20 +536,17 @@ void IOWriteTask(void *pvParameters)
       // fault leds
       if (tractiveCoreData.sensors.bmsFault)
       {
-        digitalWrite(BMS_FAULT_LED_PIN, HIGH);
-      }
-      else
+        digitalWrite(BMS_FAULT_IND_PIN, HIGH);
+        digitalWrite(TSSI_FAULT_IND_PIN, HIGH);
+      } else if (tractiveCoreData.sensors.imdFault)
       {
-        digitalWrite(BMS_FAULT_LED_PIN, LOW);
-      }
-
-      if (tractiveCoreData.sensors.imdFault)
+        digitalWrite(IMD_FAULT_IND_PIN, HIGH);
+        digitalWrite(TSSI_FAULT_IND_PIN, HIGH);
+      } else
       {
-        digitalWrite(IMD_FAULT_LED_PIN, HIGH);
-      }
-      else
-      {
-        digitalWrite(IMD_FAULT_LED_PIN, LOW);
+        digitalWrite(BMS_FAULT_IND_PIN, LOW);
+        digitalWrite(IMD_FAULT_IND_PIN, LOW);
+        digitalWrite(TSSI_FAULT_IND_PIN, LOW);
       }
 
       // drive mode led
@@ -606,6 +605,8 @@ void TWAIReadTask(void *pvParameters)
       if (twai_receive(&incomingMessage, pdMS_TO_TICKS(TWAI_BLOCK_DELAY)) == ESP_OK)
       { // if there are messages to be read
         int id = incomingMessage.identifier;
+
+        SERIAL_DEBUG.println(String(reinterpret_cast<char*>(incomingMessage.data)));
 
         // parse out data
         switch (id)
