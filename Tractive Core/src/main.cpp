@@ -39,7 +39,10 @@
 /**
  * @brief debugger structure used for organizing debug information
  */
-Debugger debugger = {.debugEnabled = ENABLE_DEBUG};
+Debugger debugger = {
+  .debugEnabled = ENABLE_DEBUG,
+  .TWAI_debugEnabled = ENABLE_DEBUG
+};
 
 /**
  * @brief the dataframe that describes the entire state of the car
@@ -191,6 +194,7 @@ void setup()
   pinMode(DRIVE_MODE_LED_PIN, OUTPUT);
   pinMode(BMS_FAULT_IND_PIN, OUTPUT);
   pinMode(IMD_FAULT_IND_PIN, OUTPUT);
+  pinMode(TSSI_FAULT_IND_PIN, OUTPUT);
 
   pinMode(FAN_ENABLE_PIN, OUTPUT);
 
@@ -975,25 +979,30 @@ void loop()
  */
 void GetCommandedTorque()
 {
-  // inits
+  // vars
   uint16_t commandedTorque;
-
-  // get the pedal average
-  uint16_t pedalAverage = (tractiveCoreData.inputs.pedal0 + tractiveCoreData.inputs.pedal1) / 2;
+  long pedal0map;
+  long pedal1map;
 
   // drive mode logic (values are 10x because that is the format for Rinehart)
   switch (tractiveCoreData.tractive.driveMode)
   {
   case SLOW: // runs at 50% power
-    commandedTorque = map(pedalAverage, PEDAL_MIN, PEDAL_MAX, 0, (MAX_TORQUE * 10) * 0.50);
+    pedal0map = map(tractiveCoreData.inputs.pedal0, PEDAL0_MIN, PEDAL0_MAX, 0, MAX_TORQUE * 10 * 0.5);
+    pedal1map = map(tractiveCoreData.inputs.pedal1, PEDAL1_MIN, PEDAL1_MAX, 0, MAX_TORQUE * 10 * 0.5);
+    commandedTorque = (pedal0map + pedal1map) / 2;
     break;
 
   case ECO: // runs at 75% power
-    commandedTorque = map(pedalAverage, PEDAL_MIN, PEDAL_MAX, 0, (MAX_TORQUE * 10) * 0.75);
+    pedal0map = map(tractiveCoreData.inputs.pedal0, PEDAL0_MIN, PEDAL0_MAX, 0, MAX_TORQUE * 10 * 0.75);
+    pedal1map = map(tractiveCoreData.inputs.pedal1, PEDAL1_MIN, PEDAL1_MAX, 0, MAX_TORQUE * 10 * 0.75);
+    commandedTorque = (pedal0map + pedal1map) / 2;
     break;
 
   case FAST: // runs at 100% power
-    commandedTorque = map(pedalAverage, PEDAL_MIN, PEDAL_MAX, 0, (MAX_TORQUE * 10));
+    pedal0map = map(tractiveCoreData.inputs.pedal0, PEDAL0_MIN, PEDAL0_MAX, 0, MAX_TORQUE * 10);
+    pedal1map = map(tractiveCoreData.inputs.pedal1, PEDAL1_MIN, PEDAL1_MAX, 0, MAX_TORQUE * 10);
+    commandedTorque = (pedal0map + pedal1map) / 2;
     break;
 
   // error state, set the mode to ECO
@@ -1228,8 +1237,6 @@ void RearLeftWheelSpeedCalculator()
 
   // update time keeping
   tractiveCoreData.sensors.blWheelSpeedTime = esp_timer_get_time();
-
-  return;
 }
 
 /**

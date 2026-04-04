@@ -148,7 +148,7 @@ struct Debugger
     bool debugEnabled = false;
     bool TWAI_debugEnabled = false;
     bool IO_debugEnabled = false;
-    bool scheduler_debugEnable = true;
+    bool scheduler_debugEnable = false;
 
     // TWAI data
     esp_err_t TWAI_rinehartCtrlResult = ESP_OK;
