@@ -4,16 +4,16 @@
  * @brief all of the unique data types used to manage the state of the car
  * @version 1.6
  * @date 2024-01-22
- */
+*/
 
 
 /*
 ===============================================================================================
-                                    Includes 
+                                    Includes
 ===============================================================================================
 */
 
-
+#pragma once
 #include <esp_err.h>
 
 
@@ -183,9 +183,3 @@ struct Debugger
     int prechargeTaskPreviousCount = 0;
     int telemetryUpdateTaskPreviousCount = 0;
 };
-
-
-// debug functions
-void PrintTWAIDebug();
-void PrintIODebug();
-void PrintScheduler();

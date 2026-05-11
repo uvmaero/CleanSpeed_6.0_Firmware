@@ -7,13 +7,16 @@
  */
 
 /*
-===============================================================================================
-                                    Includes 
-===============================================================================================
+===========================================================
+                        Includes
+===========================================================
 */
 
 #pragma once
 #include <esp_pm.h>
+#include <Arduino.h>
+#include <driver/twai.h>
+#include "data_types.h"
 
 /*
 ===========================================================
@@ -145,3 +148,50 @@ constexpr uint32_t TASK_STACK_SIZE =         20000; // in bytesF
 
 // debug
 constexpr bool ENABLE_DEBUG = true; // master debug message control
+
+/*
+===========================================================
+                    Globals
+===========================================================
+*/
+
+/**
+ * @brief debugger structure used for organizing debug information
+ */
+Debugger debugger = {
+    .debugEnabled = ENABLE_DEBUG,
+    .TWAI_debugEnabled = ENABLE_DEBUG
+};
+
+/**
+ * @brief the dataframe that describes the entire state of the car
+ */
+TractiveCoreData tractiveCoreData;
+
+// Mutex
+SemaphoreHandle_t xMutex = NULL;
+
+// Hardware Timer
+portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
+
+// RTOS Task Handles
+TaskHandle_t xHandleIORead = NULL;
+TaskHandle_t xHandleIOWrite = NULL;
+
+TaskHandle_t xHandleTWAIRead = NULL;
+TaskHandle_t xHandleTWAIWrite = NULL;
+
+TaskHandle_t xHandlePrecharge = NULL;
+TaskHandle_t xHandleTelemetryUpdate = NULL;
+
+TaskHandle_t xHandleFrontWheelSpeed = NULL;
+TaskHandle_t xHandleRearRightWheelSpeed = NULL;
+TaskHandle_t xHandleRearLeftWheelSpeed = NULL;
+
+TaskHandle_t xHandleDebug = NULL;
+
+// TWAI
+static const twai_general_config_t can_general_config = TWAI_GENERAL_CONFIG_DEFAULT((gpio_num_t)TWAI_TX_PIN, (gpio_num_t)TWAI_RX_PIN, TWAI_MODE_NORMAL);
+static const twai_timing_config_t can_timing_config = TWAI_TIMING_CONFIG_500KBITS();
+static const twai_filter_config_t can_filter_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
+int littleTest = 2;
